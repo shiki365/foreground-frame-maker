@@ -4,16 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>前景フレームメーカー | ココフォリア向け 前景枠づくりツール</title>
-<meta name="description" content="ココフォリアの前景に使う枠（フレーム）画像を、ブラウザだけで作れるツールです。朝・昼・夜の差分、角の形、自分の素材の配置に対応。">
+<meta name="description" content="ココフォリアの前景に使う枠（フレーム）画像を、ブラウザだけで作れるツールです。角の形、蔦や花などの飾り、自分の素材の配置、天気や時間帯の差分のまとめて書き出しに対応。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="前景フレームメーカー">
 <meta property="og:title" content="前景フレームメーカー">
-<meta property="og:description" content="ココフォリアの前景に使う枠画像を、ブラウザだけで作れます。朝・昼・夜の差分、角の形、自分の素材の配置に対応。無料・登録不要。">
+<meta property="og:description" content="ココフォリアの前景に使う枠画像を、ブラウザだけで作れます。形・色・飾りを組み合わせてデザインし、天気や時間帯などの差分もまとめて書き出せます。無料・登録不要。">
 <meta property="og:url" content="https://shiki365.github.io/foreground-frame-maker/">
 <meta property="og:image" content="https://shiki365.github.io/foreground-frame-maker/ogp.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="前景フレームメーカー － ココフォリアの前景枠を、朝・昼・夜の差分つきで作れます">
+<meta property="og:image:alt" content="前景フレームメーカー － ココフォリアの前景枠を、飾りや差分つきで作れます">
 <meta property="og:locale" content="ja_JP">
 <meta name="twitter:card" content="summary_large_image">
 <style>
@@ -30,14 +30,14 @@
   h1 { margin: 0 0 4px; font-size: 17px; }
   header p { margin: 0; color: var(--muted); font-size: 12px; }
   main { display: grid; gap: 20px; padding: 20px 24px 40px;
-         grid-template-columns: minmax(300px, 370px) minmax(0, 1fr); align-items: start; }
+         grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); align-items: start; }
   @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
 
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 0 16px 16px; }
-  .tabbar { display: flex; gap: 2px; margin: 0 -16px; padding: 8px 10px 0; border-bottom: 1px solid var(--line);
+  .tabbar { display: flex; gap: 2px; margin: 0 -16px; padding: 8px 8px 0; border-bottom: 1px solid var(--line);
             position: sticky; top: 0; background: var(--panel); z-index: 2; border-radius: 10px 10px 0 0; }
-  .tabbar button { flex: 1; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
-                   background: transparent; color: var(--muted); padding: 8px 4px 9px; }
+  .tabbar button { flex: 1; border: 0; border-bottom: 2px solid transparent; border-radius: 0; white-space: nowrap;
+                   background: transparent; color: var(--muted); padding: 8px 2px 9px; }
   .tabbar button:hover { background: transparent; color: var(--fg); }
   .tabbar button[aria-selected=true] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 700; }
 
@@ -51,6 +51,8 @@
   .with-value { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 8px; align-items: center; }
   .with-value output { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
   .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; }
+  .colors4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .colors4 label { display: grid; gap: 2px; color: var(--muted); font-size: 11px; text-align: center; }
   .colorref { display: flex; gap: 6px; }
   .colorref select { flex: 1; min-width: 0; }
   .colorref input[type=color] { width: 60px; flex: none; }
@@ -68,6 +70,9 @@
   .desc { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
   .desc b { color: var(--fg); }
   .check { color: var(--fg); cursor: pointer; }
+  .switch { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--line);
+            border-radius: 8px; cursor: pointer; font-weight: 700; }
+  .switch:has(input:checked) { border-color: var(--accent); background: #24264a; }
 
   button { background: #2f3140; color: var(--fg); border: 1px solid #464a5e;
            border-radius: 6px; padding: 7px 14px; font: inherit; cursor: pointer; }
@@ -84,23 +89,27 @@
           border-radius: 999px; cursor: pointer; }
   .chip:has(input:checked) { border-color: var(--accent); background: #262846; }
 
-  .layer-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
-  .layer-item { display: grid; grid-template-columns: 20px 36px minmax(0, 1fr) auto; gap: 8px; align-items: center;
-                padding: 5px 6px; border: 1px solid var(--line-soft); border-radius: 6px; cursor: pointer; }
-  .layer-item[aria-selected=true] { border-color: var(--accent); background: #24264a; }
-  .layer-item .thumb-mini { width: 36px; height: 26px; border-radius: 3px; object-fit: contain; display: grid;
-                            place-items: center; font-weight: 700; color: var(--muted);
-                            background: repeating-conic-gradient(#3a3b46 0 25%, #2a2b33 0 50%) 0 0 / 10px 10px; }
-  .layer-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .layer-item .tag { color: var(--muted); font-size: 11px; margin-left: 4px; }
-  .layer-item .btns button { padding: 2px 7px; }
+  .item-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+  .item-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: center;
+              padding: 5px 6px; border: 1px solid var(--line-soft); border-radius: 6px; cursor: pointer; }
+  .item-row.with-thumb { grid-template-columns: 20px 36px minmax(0, 1fr) auto; }
+  .item-row[aria-selected=true] { border-color: var(--accent); background: #24264a; }
+  .item-row .thumb-mini { width: 36px; height: 26px; border-radius: 3px; object-fit: contain; display: grid;
+                          place-items: center; font-weight: 700; color: var(--muted);
+                          background: repeating-conic-gradient(#3a3b46 0 25%, #2a2b33 0 50%) 0 0 / 10px 10px; }
+  .item-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-row .tag { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  .item-row .btns { flex-wrap: nowrap; gap: 4px; }
+  .item-row .btns button { padding: 2px 7px; }
   .font-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
   .font-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 
   .stage-wrap { position: sticky; top: 20px; display: grid; gap: 10px; min-width: 0; }
   .stage { position: relative; margin: 0 auto; width: 100%; border-radius: 8px; overflow: hidden;
            border: 1px solid var(--line); background-size: cover; background-position: center; }
-  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .stage #preview { touch-action: none; }
+  .stage.bg-scenery { background-color: #2a2b31; }
   .stage.bg-checker { background-color: #cfcfd6;
     background-image: linear-gradient(45deg, #9a9aa5 25%, transparent 25% 75%, #9a9aa5 75%),
                       linear-gradient(45deg, #9a9aa5 25%, transparent 25% 75%, #9a9aa5 75%);
@@ -108,19 +117,14 @@
   .stage.bg-light { background-color: #f2f2f4; }
   .stage.bg-dark { background-color: #2a2b31; }
   .stage.bg-image { background-color: #000; }
-  .stage.bg-sky { --ground: linear-gradient(transparent 72%, rgba(20, 30, 20, .28) 72%); }
-  .stage.bg-sky[data-slot=morning] { background-image: var(--ground), linear-gradient(#9fcbe8, #f6d7b8 60%, #f4b98f); }
-  .stage.bg-sky[data-slot=day] { background-image: var(--ground), linear-gradient(#4ea4e0, #a8d6f3 60%, #e3f3fb); }
-  .stage.bg-sky[data-slot=evening] { background-image: var(--ground), linear-gradient(#3d3368, #b75a6e 50%, #f39a55); }
-  .stage.bg-sky[data-slot=night] { background-image: var(--ground), linear-gradient(#05081a, #15204a 60%, #2b3668); }
 
   .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .bar .spacer { flex: 1; }
   .bar input[type=text] { width: 120px; }
-  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
   .seg button { border: 0; border-radius: 0; padding: 5px 11px; background: transparent; }
   .seg button[aria-pressed=true] { background: #3a3d4f; font-weight: 700; }
-  .seg.big button { padding: 7px 16px; font-size: 14px; }
+  .seg.big button { padding: 7px 14px; font-size: 14px; }
   .status { color: var(--muted); font-size: 12px; min-height: 1.4em; margin: 0; }
   .status.error { color: #ff8f8f; }
 
@@ -143,15 +147,16 @@
 
 <header>
   <h1>前景フレームメーカー</h1>
-  <p>ココフォリアの前景に使う「枠」画像を作れます。朝・昼・夜の差分をまとめて書き出せます。すべてブラウザの中だけで処理され、画像がどこかに送られることはありません。</p>
+  <p>ココフォリアの前景に使う「枠」画像を作れます。形・色・飾りを組み合わせてデザインし、天気や時間帯などの差分もまとめて書き出せます。すべてブラウザの中だけで処理され、画像がどこかに送られることはありません。</p>
 </header>
 
 <main>
   <div class="panel">
     <nav class="tabbar" role="tablist">
       <button type="button" role="tab" data-tab="frame" aria-selected="true">枠</button>
-      <button type="button" role="tab" data-tab="time" aria-selected="false">時間帯</button>
+      <button type="button" role="tab" data-tab="deco" aria-selected="false">飾り</button>
       <button type="button" role="tab" data-tab="layers" aria-selected="false">素材・文字</button>
+      <button type="button" role="tab" data-tab="variants" aria-selected="false">差分</button>
       <button type="button" role="tab" data-tab="project" aria-selected="false">保存など</button>
     </nav>
 
@@ -170,7 +175,7 @@
         <legend>出力サイズ</legend>
         <div class="row"><label>サイズ</label><select id="sizePreset"></select></div>
         <div class="row" id="customSize"><label>幅 × 高さ</label>
-          <span class="pair"><input type="number" data-bind="size.w" min="64" max="4096" step="1"><input type="number" data-bind="size.h" min="64" max="4096" step="1"></span>
+          <span class="pair"><input type="number" data-bind="size.w" min="64" max="4096" step="1" aria-label="幅"><input type="number" data-bind="size.h" min="64" max="4096" step="1" aria-label="高さ"></span>
         </div>
         <p class="desc" id="sizeInfo"></p>
       </fieldset>
@@ -202,6 +207,17 @@
       </fieldset>
 
       <fieldset>
+        <legend>色</legend>
+        <div class="row wide"><div class="colors4">
+          <label>枠の色1<input type="color" data-bind="colors.frame1"></label>
+          <label>枠の色2<input type="color" data-bind="colors.frame2"></label>
+          <label>アクセント<input type="color" data-bind="colors.accent"></label>
+          <label>文字<input type="color" data-bind="colors.text"></label>
+        </div></div>
+        <p class="desc" id="colorsNote"></p>
+      </fieldset>
+
+      <fieldset>
         <legend>枠の塗り</legend>
         <div class="row"><label>塗り方</label>
           <select data-bind="frame.fill">
@@ -218,7 +234,7 @@
           <div class="row"><label>ざらつき</label>
             <span class="with-value"><input type="range" data-bind="frame.grain" min="0" max="1" step="0.05"><output data-out="frame.grain" data-fmt="pct"></output></span></div>
         </div>
-        <p class="desc">色は「時間帯」タブで、朝・昼・夜ごとに決めます。ざらつきを入れると PNG が重くなります（1 枚 800KB 前後）。</p>
+        <p class="desc">ざらつきを入れると PNG が重くなります（1 枚 800KB 前後）。</p>
       </fieldset>
 
       <fieldset>
@@ -247,9 +263,44 @@
           <div class="row sub"><label>色</label><span class="colorref" data-colorref="frame.shadow.color"></span></div>
         </div>
       </fieldset>
+    </section>
+
+    <!-- ============================================================ decorations -->
+    <section data-tab-panel="deco" hidden>
+      <fieldset>
+        <legend>飾りを追加</legend>
+        <div class="row wide"><span class="btns" id="decoAdd"></span></div>
+        <p class="desc">枠に沿って蔦や花などを描き足します。同じ飾りを何個でも重ねられます。「模様を変える」で並び方が変わります。</p>
+      </fieldset>
 
       <fieldset>
-        <legend>角の飾り</legend>
+        <legend>重なり（上ほど手前）</legend>
+        <ul class="item-list" id="decoList"></ul>
+        <p class="desc" id="decoEmpty">まだ飾りはありません。上のボタンから追加するか、「枠」タブのひな形（森・遺跡、ホラーなど）を選んでみてください。</p>
+      </fieldset>
+
+      <fieldset id="decoProps" hidden>
+        <legend>選択中の飾り：<span id="decoTitle"></span></legend>
+        <p class="desc" id="decoDesc" style="margin-top: 4px;"></p>
+        <div class="row" data-uses="placement"><label>配置</label><select data-bind="deco.placement" data-placements></select></div>
+        <div class="row" data-uses="size"><label>大きさ</label><span class="with-value"><input type="range" data-bind="deco.size" min="0.3" max="2.5" step="0.05"><output data-out="deco.size" data-fmt="x"></output></span></div>
+        <div class="row" data-uses="density"><label>密度</label><span class="with-value"><input type="range" data-bind="deco.density" min="0" max="1" step="0.05"><output data-out="deco.density" data-fmt="pct"></output></span></div>
+        <div class="row" data-uses="coverage"><label>伸び具合</label><span class="with-value"><input type="range" data-bind="deco.coverage" min="0.05" max="1" step="0.05"><output data-out="deco.coverage" data-fmt="pct"></output></span></div>
+        <div class="row" data-uses="offset"><label>窓からの距離</label><span class="with-value"><input type="range" data-bind="deco.offset" min="-80" max="160" step="1"><output data-out="deco.offset"></output></span></div>
+        <p class="desc" data-uses="offset" style="margin-top: 2px;">距離をマイナスにすると窓の内側へ、プラスにすると枠の外側へずれます。</p>
+        <div class="row"><label id="decoColor1Label">色1</label><span class="colorref" data-colorref="deco.color"></span></div>
+        <div class="row"><label id="decoColor2Label">色2</label><span class="colorref" data-colorref="deco.color2"></span></div>
+        <div class="row"><label>はみ出し</label><label class="check"><input type="checkbox" data-bind="deco.clipFrame"> 窓にはみ出さない</label></div>
+        <div class="row"><label>出す差分</label><div class="chips" id="decoHide"></div></div>
+        <div class="row"><label></label><span class="btns">
+          <button type="button" class="small" id="decoReseed">模様を変える</button>
+          <button type="button" class="small" id="decoDup">複製</button>
+          <button type="button" class="small danger" id="decoDelete">削除</button>
+        </span></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>角の飾り（線画）</legend>
         <div class="row"><label>種類</label>
           <select data-bind="frame.ornament.type">
             <option value="none">なし</option><option value="bracket">カギ線</option><option value="diamond">ひし形</option>
@@ -261,55 +312,6 @@
           <div class="row sub" data-show="frame.ornament.type=bracket|diamond|flourish"><label>線の太さ</label><span class="with-value"><input type="range" data-bind="frame.ornament.width" min="1" max="16"><output data-out="frame.ornament.width"></output></span></div>
           <div class="row sub"><label>色</label><span class="colorref" data-colorref="frame.ornament.color"></span></div>
         </div>
-      </fieldset>
-    </section>
-
-    <!-- ============================================================ time -->
-    <section data-tab-panel="time" hidden>
-      <fieldset>
-        <legend>使う時間帯</legend>
-        <div class="row wide"><div class="chips" id="slotToggles"></div></div>
-        <p class="desc">プレビュー上のボタンで切り替えて確認できます。書き出しはここでオンにした時間帯だけです。</p>
-      </fieldset>
-
-      <fieldset>
-        <legend>「<span id="slotTitle"></span>」の設定</legend>
-        <div class="row"><label>表示名</label><input type="text" data-bind="slot.name" maxlength="20"></div>
-        <div class="row"><label>英語表記</label><input type="text" data-bind="slot.sub" maxlength="30"></div>
-        <div class="row"><label>アイコン</label>
-          <select data-bind="slot.icon">
-            <option value="sunrise">日の出</option><option value="sun">太陽</option><option value="sunset">夕日</option>
-            <option value="moon">月</option><option value="star">星</option><option value="cloud">雲</option>
-            <option value="custom">自分の画像</option><option value="none">なし</option>
-          </select></div>
-        <div class="row sub" data-show="slot.icon=custom"><label>画像</label>
-          <span class="btns"><button type="button" class="small" id="slotIconPick">画像を選ぶ</button></span></div>
-        <div class="row"><label>枠の色</label><span class="pair"><input type="color" data-bind="slot.frame1" aria-label="枠の色1"><input type="color" data-bind="slot.frame2" aria-label="枠の色2"></span></div>
-        <div class="row"><label>アクセント色</label><input type="color" data-bind="slot.accent"></div>
-        <div class="row"><label>文字の色</label><input type="color" data-bind="slot.text"></div>
-        <div class="row"><label>窓の色かぶり</label>
-          <span class="pair" style="grid-template-columns: 60px 1fr;"><input type="color" data-bind="slot.tint" aria-label="色かぶりの色">
-            <span class="with-value"><input type="range" data-bind="slot.tintAlpha" min="0" max="0.7" step="0.01" aria-label="色かぶりの強さ"><output data-out="slot.tintAlpha" data-fmt="pct"></output></span></span></div>
-        <p class="desc">色かぶりは窓の部分にうすく色を乗せます。窓越しに見える背景を、夜は暗く・夕方は赤く見せられます。</p>
-        <div class="row"><label></label><span class="btns"><button type="button" class="small" id="copyColors">この色を全時間帯に使う</button></span></div>
-      </fieldset>
-
-      <fieldset>
-        <legend>時間帯の表示</legend>
-        <div class="row"><label>スタイル</label>
-          <select data-bind="time.indicator.style">
-            <option value="badge">バッジ</option><option value="tabs">並べて強調</option>
-            <option value="dial">太陽と月の軌道</option><option value="label">文字だけ</option><option value="none">表示しない</option>
-          </select></div>
-        <div data-show="time.indicator.style!=none">
-          <div class="row"><label>位置</label><span class="btns" id="posButtons"></span></div>
-          <div class="row"><label>大きさ</label><span class="with-value"><input type="range" data-bind="time.indicator.scale" min="0.4" max="3" step="0.05"><output data-out="time.indicator.scale" data-fmt="x"></output></span></div>
-          <div class="row"><label>背景の濃さ</label><span class="with-value"><input type="range" data-bind="time.indicator.bgAlpha" min="0" max="1" step="0.05"><output data-out="time.indicator.bgAlpha" data-fmt="pct"></output></span></div>
-          <div class="row" data-show="time.indicator.style!=tabs"><label>英語表記</label><label class="check"><input type="checkbox" data-bind="time.indicator.showSub"> 表示する</label></div>
-          <div class="row"><label>フォント</label><select data-bind="time.indicator.font" data-fonts></select></div>
-          <div class="row sub" data-show="time.indicator.font=name"><label>フォント名</label><input type="text" data-bind="time.indicator.fontName" placeholder="例）Yu Mincho"></div>
-        </div>
-        <p class="desc">プレビュー上でドラッグしても動かせます。自作のアイコン画像で表示したいときは、「素材・文字」タブで画像ごとに表示する時間帯を選ぶ方法もあります。</p>
       </fieldset>
     </section>
 
@@ -326,7 +328,7 @@
 
       <fieldset>
         <legend>重なり（上ほど手前）</legend>
-        <ul class="layer-list" id="layerList"></ul>
+        <ul class="item-list" id="layerList"></ul>
         <p class="desc" id="layerEmpty">まだ何もありません。</p>
       </fieldset>
 
@@ -347,7 +349,7 @@
 
         <div data-show="layer.kind=text">
           <div class="row"><label>文字</label><textarea data-bind="layer.text" rows="2"></textarea></div>
-          <p class="desc" style="margin-top: 4px;"><code>{時間帯}</code> は「朝」など、<code>{英語}</code> は「MORNING」などに置き換わります。</p>
+          <p class="desc" style="margin-top: 4px;">差分を作っているときは、<code>{差分}</code> が「朝」「雨」などに、<code>{英語}</code> が「MORNING」などに置き換わります。</p>
           <div class="row"><label>フォント</label><select data-bind="layer.font" data-fonts></select></div>
           <div class="row sub" data-show="layer.font=name"><label>フォント名</label><input type="text" data-bind="layer.fontName" placeholder="例）BIZ UDPGothic"></div>
           <div class="row"><label>文字サイズ</label><span class="with-value"><input type="range" data-bind="layer.size" min="8" max="400"><output data-out="layer.size"></output></span></div>
@@ -379,7 +381,7 @@
         <div class="row"><label>重ね順</label>
           <select data-bind="layer.order">
             <option value="front">いちばん手前</option>
-            <option value="back">枠の塗りの上（線・時間帯表示より奥）</option>
+            <option value="back">枠の塗りの上（線・飾り・差分の表示より奥）</option>
           </select></div>
         <div class="row"><label>描く範囲</label>
           <select data-bind="layer.clip">
@@ -387,12 +389,79 @@
             <option value="frame">枠の上だけ（窓は透明のまま）</option>
             <option value="window">窓の中だけ</option>
           </select></div>
-        <div class="row"><label>出す時間帯</label><div class="chips" id="layerTimes"></div></div>
+        <div class="row"><label>出す差分</label><div class="chips" id="layerHide"></div></div>
         <div class="row"><label></label><span class="btns">
           <button type="button" class="small" id="dupLayer">複製</button>
           <button type="button" class="small danger" id="deleteLayer">削除</button>
         </span></div>
       </fieldset>
+    </section>
+
+    <!-- ============================================================ variants -->
+    <section data-tab-panel="variants" hidden>
+      <fieldset>
+        <legend>差分</legend>
+        <div class="row wide"><label class="switch"><input type="checkbox" data-bind="variants.enabled" aria-label="差分を作る"> 差分を作る</label></div>
+        <p class="desc">同じ枠を、天気や時間帯などに合わせて何枚か作り分ける機能です。差分ごとに色・窓の演出（雨や雪など）・表示を変えられ、<b>ZIP でまとめて保存</b>できます。素材や飾りも差分ごとに出し分けられます。</p>
+      </fieldset>
+
+      <div data-show="variants.enabled=true">
+        <fieldset>
+          <legend>種類</legend>
+          <div class="row wide"><select id="variantKind" aria-label="差分の種類"></select></div>
+          <p class="desc" id="variantKindDesc"></p>
+          <p class="desc">種類を変えると、下の一覧が入れ替わります（Ctrl+Z で戻せます）。どの種類でも、名前や演出は自由に変えられます。</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>差分の一覧</legend>
+          <ul class="item-list" id="variantList"></ul>
+          <div class="row wide"><span class="btns"><button type="button" class="small" id="addVariant">＋ 差分を追加</button></span></div>
+          <p class="desc">クリックで編集・プレビュー。チェックを外した差分は書き出しません。</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>「<span id="variantTitle"></span>」の設定</legend>
+          <div class="row"><label>表示名</label><input type="text" data-bind="variant.name" maxlength="20"></div>
+          <div class="row"><label>英語表記</label><input type="text" data-bind="variant.sub" maxlength="30"></div>
+          <div class="row"><label>アイコン</label><select data-bind="variant.icon" data-icons></select></div>
+          <div class="row sub" data-show="variant.icon=custom"><label>画像</label>
+            <span class="btns"><button type="button" class="small" id="slotIconPick">画像を選ぶ</button></span></div>
+          <div class="row"><label>色</label><label class="check"><input type="checkbox" data-bind="variant.useColors"> この差分だけの色にする</label></div>
+          <div class="row wide" data-show="variant.useColors=true"><div class="colors4">
+            <label>枠の色1<input type="color" data-bind="variant.frame1"></label>
+            <label>枠の色2<input type="color" data-bind="variant.frame2"></label>
+            <label>アクセント<input type="color" data-bind="variant.accent"></label>
+            <label>文字<input type="color" data-bind="variant.text"></label>
+          </div></div>
+          <div class="row"><label>窓の色かぶり</label>
+            <span class="pair" style="grid-template-columns: 60px 1fr;"><input type="color" data-bind="variant.tint" aria-label="色かぶりの色">
+              <span class="with-value"><input type="range" data-bind="variant.tintAlpha" min="0" max="0.7" step="0.01" aria-label="色かぶりの強さ"><output data-out="variant.tintAlpha" data-fmt="pct"></output></span></span></div>
+          <div class="row"><label>窓の演出</label><select data-bind="variant.effect" data-effects></select></div>
+          <div class="row sub" data-show="variant.effect!=none"><label>強さ</label>
+            <span class="with-value"><input type="range" data-bind="variant.effectAmount" min="0" max="1" step="0.05"><output data-out="variant.effectAmount" data-fmt="pct"></output></span></div>
+          <p class="desc">色かぶりと演出は窓の部分に重なります。窓越しに見える背景を、夜は暗く、雨の日は雨越しに見せられます。</p>
+          <div class="row"><label></label><span class="btns"><button type="button" class="small" id="copyColors">この色の設定を全差分に使う</button></span></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>差分の表示</legend>
+          <div class="row"><label>スタイル</label>
+            <select data-bind="variants.label.style">
+              <option value="badge">バッジ</option><option value="tabs">並べて強調</option>
+              <option value="dial">軌道（時間帯向き）</option><option value="label">文字だけ</option><option value="none">表示しない</option>
+            </select></div>
+          <div data-show="variants.label.style!=none">
+            <div class="row"><label>位置</label><span class="btns" id="posButtons"></span></div>
+            <div class="row"><label>大きさ</label><span class="with-value"><input type="range" data-bind="variants.label.scale" min="0.4" max="3" step="0.05"><output data-out="variants.label.scale" data-fmt="x"></output></span></div>
+            <div class="row"><label>背景の濃さ</label><span class="with-value"><input type="range" data-bind="variants.label.bgAlpha" min="0" max="1" step="0.05"><output data-out="variants.label.bgAlpha" data-fmt="pct"></output></span></div>
+            <div class="row" data-show="variants.label.style!=tabs"><label>英語表記</label><label class="check"><input type="checkbox" data-bind="variants.label.showSub"> 表示する</label></div>
+            <div class="row"><label>フォント</label><select data-bind="variants.label.font" data-fonts></select></div>
+            <div class="row sub" data-show="variants.label.font=name"><label>フォント名</label><input type="text" data-bind="variants.label.fontName" placeholder="例）Yu Mincho"></div>
+          </div>
+          <p class="desc">プレビュー上でドラッグしても動かせます。</p>
+        </fieldset>
+      </div>
     </section>
 
     <!-- ============================================================ project -->
@@ -427,15 +496,18 @@
 
   <div class="stage-wrap">
     <div class="bar">
-      <span class="seg big" id="slotSeg" aria-label="時間帯"></span>
+      <span class="seg big" id="variantSeg" aria-label="差分" hidden></span>
       <span class="spacer"></span>
       <button type="button" class="small" id="undo" title="元に戻す (Ctrl+Z)">↶ 戻す</button>
       <button type="button" class="small" id="redo" title="やり直す (Ctrl+Y)">↷ 進む</button>
     </div>
-    <div class="stage bg-sky" id="stage"><canvas id="preview" tabindex="0" aria-label="プレビュー（素材や時間帯表示をドラッグで移動）"></canvas></div>
+    <div class="stage bg-scenery" id="stage">
+      <canvas id="previewBg" aria-hidden="true"></canvas>
+      <canvas id="preview" tabindex="0" aria-label="プレビュー（素材や差分の表示をドラッグで移動）"></canvas>
+    </div>
     <div class="bar">
       <span class="seg" id="bgSeg" aria-label="プレビューの背景">
-        <button type="button" data-bg="sky">空</button>
+        <button type="button" data-bg="scenery">風景</button>
         <button type="button" data-bg="checker">市松</button>
         <button type="button" data-bg="dark">暗い</button>
         <button type="button" data-bg="light">白</button>
@@ -444,26 +516,26 @@
       <label class="check"><input type="checkbox" data-bind="preview.grid"> マス目</label>
       <span class="spacer"></span>
       <input type="text" data-bind="fileBase" aria-label="ファイル名" placeholder="ファイル名">
-      <button type="button" id="downloadPng">この時間帯をPNG保存</button>
-      <button type="button" class="primary" id="downloadZip">全時間帯をZIPで保存</button>
+      <button type="button" class="primary" id="downloadPng">PNGで保存</button>
+      <button type="button" class="primary" id="downloadZip" hidden>全差分をZIPで保存</button>
     </div>
     <p class="status" id="status">読み込み中...</p>
-    <div class="thumbs" id="thumbs"></div>
+    <div class="thumbs" id="thumbs" hidden></div>
 
     <div class="note">
       <h2>使い方</h2>
       <ul>
-        <li>「枠」タブで形・太さ・角を、「時間帯」タブで朝・昼・夜それぞれの色と表示を決めます。</li>
-        <li>自分の素材は「素材・文字」タブへ。素材ごとに<strong>出す時間帯</strong>を選べるので、「朝と昼だけ太陽のイラスト、夜だけ月」のような差分が作れます。</li>
-        <li>プレビューの素材や時間帯表示はドラッグで動かせます。選択中は矢印キーで微調整（Shift で大きく）、Delete で削除です。</li>
-        <li>「全時間帯をZIPで保存」で、オンにした時間帯の PNG がまとめて手に入ります。</li>
+        <li>「枠」タブで形・色・線を決め、「飾り」タブで蔦や花などを重ねます。ひな形を選ぶと一式がまとめて切り替わります。</li>
+        <li>自分の素材や文字は「素材・文字」タブへ。プレビュー上でドラッグして動かせます（矢印キーで微調整、Shift で大きく、Delete で削除）。</li>
+        <li>天気や時間帯などで何枚か作り分けたいときは、「差分」タブで<strong>差分を作る</strong>をオンにします。差分ごとに色や窓の演出を変え、ZIP でまとめて保存できます。</li>
+        <li>プレビューの「風景」は仕上がり確認用のサンプルです。書き出す画像では窓の部分は透明になります。</li>
       </ul>
       <h2>ココフォリアでの設定</h2>
       <ul>
         <li>盤面の前景をダブルクリック（または右クリック →「前景・背景を変更」）して、書き出した PNG を前景に選びます。</li>
         <li>前景の横幅・縦幅は「枠」タブの出力サイズの下に出るマス数にします（幅 1 = 24px）。比率が合わないと、自動トリミングがオフなら画像が引き伸ばされ、オンなら端が切れます。</li>
         <li>窓の部分は透明なので、ルームの背景画像が透けて見えます。</li>
-        <li>時間帯ごとに<strong>シーン</strong>を作っておくと、切り替えが一瞬です（シーンには前景・背景・BGM・マーカーパネルが保存されます）。</li>
+        <li>差分ごとに<strong>シーン</strong>を作っておくと、切り替えが一瞬です（シーンには前景・背景・BGM・マーカーパネルが保存されます）。</li>
       </ul>
     </div>
   </div>
@@ -478,12 +550,17 @@
 <footer>
   ブラウザだけで動く無料ツールです。作った画像は自由に使えます（読み込んだ配布素材・フォントは、それぞれの利用規約に従ってください）。<br>
   TRPG オンラインセッションツールでの利用を想定していますが、いずれのサービスとも関係のない<strong>非公式</strong>のツールです。<br>
-  v1 ・ 最終更新 2026-09-13
+  v2 ・ 最終更新 2026-09-14
 </footer>
 
 <script src="zip.v1.js"></script>
-<script src="model.v1.js"></script>
-<script src="render.v1.js"></script>
-<script src="app.v1.js"></script>
+<script src="presets.v1.js"></script>
+<script src="icons.v1.js"></script>
+<script src="effects.v1.js"></script>
+<script src="deco.v1.js"></script>
+<script src="deco-extra.v1.js"></script>
+<script src="model.v2.js"></script>
+<script src="render.v2.js"></script>
+<script src="app.v2.js"></script>
 </body>
 </html>

@@ -1,24 +1,28 @@
 /*!
- * app.v1.js - 前景フレームメーカー (UI)
+ * app.v2.js - 前景フレームメーカー (UI)
  *
  * The whole project is one plain JSON object (`state`), so undo, autosave and
  * project files are all just snapshots of it. Images and fonts live apart in
  * `assets` (id -> data URL) to keep snapshots small.
  *
  * Controls are wired declaratively from the HTML:
- *   data-bind="frame.opacity"   read/write that path ("slot." = current slot, "layer." = selected layer)
+ *   data-bind="frame.opacity"   read/write that path. Prefixes: "variant." = the variant being edited,
+ *                               "layer." / "deco." = the selected layer / decoration,
+ *                               "colors." = the colors in effect (palette, or the variant's own)
  *   data-out="..."              shows the value next to a slider
  *   data-show="a=x|y&b!=z"      visible only while the condition holds
  *   data-colorref="..."         palette color picker ("accent", "text", ... or "#rrggbb")
+ *   data-uses="density"         decoration control, shown only for types that use it
  */
 (function () {
   "use strict";
 
-  const M = window.FrameModel, R = window.FrameRender;
+  const M = window.FrameModel, R = window.FrameRender, P = window.FramePresets;
   const $ = sel => document.querySelector(sel);
   const $$ = sel => [...document.querySelectorAll(sel)];
 
   const TAB_KEY = "ccf-frame-maker.tab";
+  const TABS = ["frame", "deco", "layers", "variants", "project"];
   const DB_NAME = "ccf-frame-maker", DB_STORE = "kv";
   const POSITIONS = [["tl", "左上"], ["tc", "上"], ["tr", "右上"], ["bl", "左下"], ["bc", "下"], ["br", "右下"]];
   const CORNER_LABELS = ["左上", "右上", "右下", "左下"];
@@ -28,27 +32,40 @@
   let assets = {};                 // id -> { kind: "image" | "font", name, data, family? }
   const env = { images: new Map(), recolorCache: new Map(), fontFamilies: {} };
   let selectedId = null;           // layer id or "indicator"
+  let selectedDecoId = null;
   let hits = [];
   let customSizeOpen = false;
+  let cornerMode = null;
   const history = { undo: [], redo: [], last: null };
 
-  const stage = $("#stage"), canvas = $("#preview"), pctx = canvas.getContext("2d");
+  const stage = $("#stage"), canvas = $("#preview"), bgCanvas = $("#previewBg"), pctx = canvas.getContext("2d");
 
   // ---------------------------------------------------------------- paths
 
-  function currentSlot() {
-    return state.time.slots.find(s => s.id === state.time.current) || state.time.slots[0];
+  function currentItem() {
+    const items = state.variants.items;
+    return items.find(i => i.id === state.variants.current) || items.find(i => i.on) || items[0];
+  }
+
+  function colorsTarget() {
+    const item = currentItem();
+    return state.variants.enabled && item && item.useColors ? item : state.palette;
   }
 
   function selectedLayer() {
     return state.layers.find(l => l.id === selectedId) || null;
   }
 
+  function selectedDeco() {
+    return state.decorations.find(d => d.id === selectedDecoId) || null;
+  }
+
+  const HEADS = { variant: currentItem, layer: selectedLayer, deco: selectedDeco, colors: colorsTarget };
+
   function resolveTarget(path) {
     const parts = path.split(".");
     let obj = state;
-    if (parts[0] === "slot") { obj = currentSlot(); parts.shift(); }
-    else if (parts[0] === "layer") { obj = selectedLayer(); parts.shift(); }
+    if (HEADS[parts[0]]) obj = HEADS[parts.shift()]();
     for (let i = 0; i < parts.length - 1 && obj != null; i++) obj = obj[parts[i]];
     return obj == null ? null : { obj, key: parts[parts.length - 1] };
   }
@@ -103,8 +120,14 @@
       layoutStage();
     } else if (path === "layer.name" || path === "layer.text") {
       renderLayerList();
-    } else if (path.startsWith("slot.")) {
-      renderSlotUI();
+    } else if (path === "variants.enabled" || path === "variant.useColors") {
+      syncControls();
+      scheduleThumbs();
+      return;
+    } else if (path.startsWith("variant.")) {
+      renderVariantUI();
+    } else if (path === "preview.grid") {
+      requestRender();
     }
     updateVisibility();
     updateOutputs();
@@ -135,7 +158,7 @@
       const color = document.createElement("input");
       color.type = "color";
       const options = host.dataset.none ? [["none", host.dataset.none]] : [];
-      options.push(...M.COLOR_REFS, ["custom", "色を指定"]);
+      options.push(...P.COLOR_REFS, ["custom", "色を指定"]);
       for (const [value, text] of options) select.add(new Option(text, value));
       const label = host.closest(".row")?.querySelector(":scope > label")?.textContent.trim() || "色";
       select.setAttribute("aria-label", label);
@@ -161,15 +184,19 @@
     }
   }
 
+  function fillSelect(select, options) {
+    select.innerHTML = "";
+    for (const [value, text] of options) select.add(new Option(text, value));
+  }
+
   function fillFontSelects() {
-    const options = Object.entries(M.FONTS).map(([key, font]) => [key, font.label]);
+    const options = Object.entries(P.FONTS).map(([key, font]) => [key, font.label]);
     for (const [id, asset] of Object.entries(assets)) {
       if (asset.kind === "font") options.push(["font:" + id, "読込: " + asset.family]);
     }
     options.push(["name", "名前で指定（PCのフォント）"]);
     for (const select of $$("select[data-fonts]")) {
-      select.innerHTML = "";
-      for (const [value, text] of options) select.add(new Option(text, value));
+      fillSelect(select, options);
       const value = getPath(select.dataset.bind);
       if (value !== undefined) select.value = value;
       if (select.selectedIndex < 0) select.value = "gothic";
@@ -222,11 +249,12 @@
       else el.value = value;
     }
     for (const host of $$("[data-colorref]")) host.syncValue();
-    for (const btn of $$("#posButtons button")) btn.setAttribute("aria-pressed", String(btn.dataset.pos === state.time.indicator.pos));
+    for (const btn of $$("#posButtons button")) btn.setAttribute("aria-pressed", String(btn.dataset.pos === state.variants.label.pos));
     for (const btn of $$("#bgSeg button")) btn.setAttribute("aria-pressed", String(btn.dataset.bg === state.preview.bg));
     syncSizePreset();
     renderCornerRows();
-    renderSlotUI();
+    renderVariantUI();
+    renderDecoList();
     renderLayerList();
     updateVisibility();
     updateOutputs();
@@ -238,7 +266,7 @@
 
   function syncSizePreset() {
     const select = $("#sizePreset"), key = `${state.size.w}x${state.size.h}`;
-    const known = M.SIZES.some(s => s.key === key);
+    const known = P.SIZES.some(s => s.key === key);
     select.value = !customSizeOpen && known ? key : "custom";
     $("#customSize").hidden = select.value !== "custom";
   }
@@ -252,6 +280,10 @@
     $("#openingInfo").textContent = `窓の大きさ ${Math.round(r.w * k)} × ${Math.round(r.h * k)} px。`
       + `盤面では 横 ${cells(r.w, VW, u.w)} × 縦 ${cells(r.h, R.BASE_H, u.h)} マス分`
       + `（左上から ${cells(r.x0, VW, u.w)}, ${cells(r.y0, R.BASE_H, u.h)} マスの位置）です。`;
+    const item = currentItem(), own = state.variants.enabled && item && item.useColors;
+    $("#colorsNote").textContent = own
+      ? `いまは差分「${item.name}」だけの色を編集しています。全体の色に戻すには「差分」タブで「この差分だけの色にする」を外します。`
+      : "枠全体の色です。差分ごとに色を変えたいときは「差分」タブで設定します。";
   }
 
   // ---------------------------------------------------------------- history
@@ -279,6 +311,7 @@
     state = JSON.parse(snap);
     history.last = snap;
     if (selectedId && selectedId !== "indicator" && !selectedLayer()) selectedId = null;
+    if (selectedDecoId && !selectedDeco()) selectedDecoId = null;
     cornerMode = null;
     fillFontSelects();
     syncControls();
@@ -315,9 +348,9 @@
 
   function applyPreviewBg() {
     const bg = state.preview.bg, asset = assets[state.preview.bgAsset];
-    const useImage = bg === "image" && asset;
     stage.className = "stage bg-" + (bg === "image" && !asset ? "checker" : bg);
-    stage.style.backgroundImage = useImage ? `url("${asset.data}")` : "";
+    stage.style.backgroundImage = bg === "image" && asset ? `url("${asset.data}")` : "";
+    requestRender();
   }
 
   let renderQueued = false;
@@ -336,8 +369,13 @@
     if (!rect.width) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const W = Math.round(rect.width * dpr), H = Math.max(1, Math.round(W * state.size.h / state.size.w));
-    if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
-    hits = R.render(pctx, state, env, state.time.current, W, H);
+    for (const c of [canvas, bgCanvas]) {
+      if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+    }
+    const bctx = bgCanvas.getContext("2d");
+    bctx.clearRect(0, 0, W, H);
+    if (state.preview.bg === "scenery") R.drawScenery(bctx, W, H, R.sceneryFor(state, state.variants.current));
+    hits = R.render(pctx, state, env, state.variants.current, W, H);
     if (state.preview.grid) R.drawGrid(pctx, state, W, H);
     const hit = hits.find(h => h.id === selectedId);
     if (hit) R.drawSelection(pctx, hit, H / R.BASE_H);
@@ -353,78 +391,288 @@
   function renderThumbs() {
     const box = $("#thumbs");
     box.innerHTML = "";
+    box.hidden = !state.variants.enabled;
+    if (!state.variants.enabled) return;
     const w = 320, h = Math.max(1, Math.round(w * state.size.h / state.size.w));
-    for (const slot of state.time.slots) {
-      if (!slot.on) continue;
+    const frame = document.createElement("canvas");
+    frame.width = w;
+    frame.height = h;
+    for (const item of state.variants.items) {
+      if (!item.on) continue;
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.setAttribute("aria-pressed", String(slot.id === state.time.current));
+      btn.setAttribute("aria-pressed", String(item.id === state.variants.current));
       const c = document.createElement("canvas");
       c.width = w;
       c.height = h;
-      R.render(c.getContext("2d"), state, env, slot.id, w, h);
+      const x = c.getContext("2d");
+      if (state.preview.bg === "scenery") R.drawScenery(x, w, h, R.sceneryFor(state, item.id));
+      R.render(frame.getContext("2d"), state, env, item.id, w, h);
+      x.drawImage(frame, 0, 0);
       const label = document.createElement("span");
-      label.textContent = slot.name;
+      label.textContent = item.name;
       btn.append(c, label);
-      btn.addEventListener("click", () => setCurrentSlot(slot.id));
+      btn.addEventListener("click", () => setCurrentVariant(item.id));
       box.append(btn);
     }
   }
 
-  // ---------------------------------------------------------------- time slots
+  // ---------------------------------------------------------------- lists
 
-  function setCurrentSlot(id) {
-    state.time.current = id;
+  function smallButton(text, title, onClick) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "small";
+    btn.textContent = text;
+    if (title) {
+      btn.title = title;
+      btn.setAttribute("aria-label", title);
+    }
+    btn.addEventListener("click", ev => {
+      ev.stopPropagation();
+      onClick(ev);
+    });
+    return btn;
+  }
+
+  function checkbox(checked, label, onChange) {
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = checked;
+    input.setAttribute("aria-label", label);
+    input.addEventListener("click", ev => ev.stopPropagation());
+    input.addEventListener("change", () => onChange(input));
+    return input;
+  }
+
+  function moveInList(list, index, delta) {
+    const to = index + delta;
+    if (to < 0 || to >= list.length) return;
+    [list[index], list[to]] = [list[to], list[index]];
+    commit();
+    syncControls();
+    requestRender();
+  }
+
+  // Chips that decide which variants show a layer / decoration.
+  function renderHideChips(box, obj) {
+    box.innerHTML = "";
+    const row = box.closest(".row");
+    if (row) row.hidden = !state.variants.enabled;
+    if (!state.variants.enabled || !obj) return;
+    for (const item of state.variants.items) {
+      const label = document.createElement("label");
+      label.className = "chip";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = !obj.hideIn[item.id];
+      input.addEventListener("change", () => {
+        if (input.checked) delete obj.hideIn[item.id];
+        else obj.hideIn[item.id] = true;
+        commit();
+        requestRender();
+      });
+      label.append(input, document.createTextNode(item.name || item.id));
+      box.append(label);
+    }
+  }
+
+  // ---------------------------------------------------------------- variants
+
+  function setCurrentVariant(id) {
+    state.variants.current = id;
     syncControls();
     requestRender();
     scheduleThumbs();
     scheduleSave();
   }
 
-  function renderSlotUI() {
-    if (!currentSlot().on) state.time.current = state.time.slots.find(s => s.on).id;
-    const seg = $("#slotSeg");
+  function renderVariantUI() {
+    const v = state.variants, cur = currentItem();
+    if (cur && v.current !== cur.id) v.current = cur.id;
+
+    const seg = $("#variantSeg");
     seg.innerHTML = "";
-    for (const slot of state.time.slots) {
-      if (!slot.on) continue;
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = slot.name || "（名前なし）";
-      btn.setAttribute("aria-pressed", String(slot.id === state.time.current));
-      btn.addEventListener("click", () => setCurrentSlot(slot.id));
-      seg.append(btn);
+    seg.hidden = !v.enabled;
+    if (v.enabled) {
+      for (const item of v.items) {
+        if (!item.on && item.id !== v.current) continue;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = item.name || "（名前なし）";
+        btn.setAttribute("aria-pressed", String(item.id === v.current));
+        btn.addEventListener("click", () => setCurrentVariant(item.id));
+        seg.append(btn);
+      }
     }
 
-    const toggles = $("#slotToggles");
-    toggles.innerHTML = "";
-    for (const slot of state.time.slots) {
-      const label = document.createElement("label");
-      label.className = "chip";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = slot.on;
-      input.addEventListener("change", () => {
-        if (!input.checked && state.time.slots.filter(s => s.on).length === 1) {
+    $("#variantKind").value = v.kind;
+    $("#variantKindDesc").textContent = P.VARIANT_KINDS[v.kind].desc;
+
+    const list = $("#variantList");
+    list.innerHTML = "";
+    v.items.forEach((item, index) => {
+      const li = document.createElement("li");
+      li.className = "item-row";
+      li.setAttribute("aria-selected", String(item.id === v.current));
+      const on = checkbox(item.on, "書き出す", input => {
+        if (!input.checked && v.items.filter(i => i.on).length === 1) {
           input.checked = true;
-          status("時間帯は 1 つ以上オンにしてください。", true);
+          status("差分は 1 つ以上オンにしてください。", true);
           return;
         }
-        slot.on = input.checked;
-        if (slot.on) state.time.current = slot.id;
+        item.on = input.checked;
         commit();
         syncControls();
         requestRender();
       });
-      label.append(input, document.createTextNode(slot.name || slot.id));
-      toggles.append(label);
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = item.name || "（名前なし）";
+      if (!item.on) {
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = "書き出さない";
+        name.append(tag);
+      }
+      const btns = document.createElement("span");
+      btns.className = "btns";
+      const up = smallButton("↑", "上へ", () => moveInList(v.items, index, -1));
+      const down = smallButton("↓", "下へ", () => moveInList(v.items, index, 1));
+      up.disabled = index === 0;
+      down.disabled = index === v.items.length - 1;
+      btns.append(up, down, smallButton("×", "削除", () => deleteVariant(index)));
+      li.append(on, name, btns);
+      li.addEventListener("click", () => setCurrentVariant(item.id));
+      list.append(li);
+    });
+
+    $("#variantTitle").textContent = cur ? cur.name : "";
+    $("#downloadZip").hidden = !v.enabled;
+    $("#downloadPng").textContent = v.enabled ? "この差分をPNG保存" : "PNGで保存";
+    $("#thumbs").hidden = !v.enabled;
+  }
+
+  function addVariant() {
+    const items = state.variants.items, n = items.length + 1;
+    const item = M.variantItem(Object.assign(M.clone(currentItem()), {
+      id: M.newId("v"), on: true, name: `パターン${n}`, sub: `PATTERN ${n}`,
+    }));
+    items.push(item);
+    state.variants.current = item.id;
+    commit();
+    syncControls();
+    requestRender();
+    status("今の差分をもとに、新しい差分を追加しました。");
+  }
+
+  function deleteVariant(index) {
+    const items = state.variants.items;
+    if (items.length <= 1) {
+      status("差分は 1 つ以上必要です。使わないときは「差分を作る」をオフにしてください。", true);
+      return;
     }
-    $("#slotTitle").textContent = currentSlot().name;
-    stage.dataset.slot = state.time.current;
+    const [removed] = items.splice(index, 1);
+    if (!items.some(i => i.on)) items[0].on = true;
+    if (state.variants.current === removed.id) state.variants.current = (items.find(i => i.on) || items[0]).id;
+    commit();
+    syncControls();
+    requestRender();
+    status(`「${removed.name}」を削除しました（Ctrl+Z で戻せます）。`);
+  }
+
+  function changeVariantKind(kind) {
+    const v = state.variants;
+    v.kind = kind;
+    v.items = M.variantItems(kind, state);
+    v.current = (v.items.find(i => i.on) || v.items[0]).id;
+    commit();
+    syncControls();
+    requestRender();
+    status(`差分の種類を「${P.VARIANT_KINDS[kind].label}」にしました。名前や色は自由に変えられます。`);
+  }
+
+  // ---------------------------------------------------------------- decorations
+
+  function addDecoration(type) {
+    const d = M.newDecoration(type);
+    state.decorations.push(d);
+    selectedDecoId = d.id;
+    commit();
+    syncControls();
+    requestRender();
+    status(`「${P.DECO_TYPES[type].label}」を追加しました。`);
+  }
+
+  function renderDecoList() {
+    const list = $("#decoList");
+    list.innerHTML = "";
+    $("#decoEmpty").hidden = state.decorations.length > 0;
+    const decos = state.decorations;
+    for (let i = decos.length - 1; i >= 0; i--) {
+      const d = decos[i], T = P.DECO_TYPES[d.type];
+      const li = document.createElement("li");
+      li.className = "item-row";
+      li.setAttribute("aria-selected", String(d.id === selectedDecoId));
+      const on = checkbox(d.on, "表示する", input => {
+        d.on = input.checked;
+        commit();
+        requestRender();
+      });
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = T.label;
+      const btns = document.createElement("span");
+      btns.className = "btns";
+      const up = smallButton("↑", "手前へ", () => moveInList(decos, i, 1));
+      const down = smallButton("↓", "奥へ", () => moveInList(decos, i, -1));
+      up.disabled = i === decos.length - 1;
+      down.disabled = i === 0;
+      btns.append(up, down);
+      li.append(on, name, btns);
+      li.addEventListener("click", () => {
+        selectedDecoId = d.id;
+        syncControls();
+      });
+      list.append(li);
+    }
+
+    const d = selectedDeco();
+    $("#decoProps").hidden = !d;
+    if (!d) return;
+    const T = P.DECO_TYPES[d.type];
+    $("#decoTitle").textContent = T.label;
+    $("#decoDesc").textContent = T.desc;
+    $("#decoColor1Label").textContent = T.colorNames[0];
+    $("#decoColor2Label").textContent = T.colorNames[1];
+    const uses = T.uses.split(" ");
+    for (const el of $$("#decoProps [data-uses]")) el.hidden = !uses.includes(el.dataset.uses);
+    renderHideChips($("#decoHide"), d);
+  }
+
+  function duplicateDeco() {
+    const d = selectedDeco();
+    if (!d) return;
+    const copy = Object.assign(M.clone(d), { id: M.newId("D"), seed: d.seed + 7 });
+    state.decorations.splice(state.decorations.indexOf(d) + 1, 0, copy);
+    selectedDecoId = copy.id;
+    commit();
+    syncControls();
+    requestRender();
+  }
+
+  function deleteDeco() {
+    const index = state.decorations.findIndex(d => d.id === selectedDecoId);
+    if (index < 0) return;
+    const [removed] = state.decorations.splice(index, 1);
+    selectedDecoId = null;
+    commit();
+    syncControls();
+    requestRender();
+    status(`「${P.DECO_TYPES[removed.type].label}」を削除しました（Ctrl+Z で戻せます）。`);
   }
 
   // ---------------------------------------------------------------- corners
-
-  let cornerMode = null;
 
   function renderCornerRows() {
     const mode = state.opening.linkCorners ? "linked" : "each";
@@ -456,15 +704,6 @@
     requestRender();
   }
 
-  function moveLayer(index, delta) {
-    const to = index + delta;
-    if (to < 0 || to >= state.layers.length) return;
-    [state.layers[index], state.layers[to]] = [state.layers[to], state.layers[index]];
-    commit();
-    syncControls();
-    requestRender();
-  }
-
   function renderLayerList() {
     const list = $("#layerList");
     list.innerHTML = "";
@@ -472,16 +711,11 @@
     for (let i = state.layers.length - 1; i >= 0; i--) {
       const layer = state.layers[i];
       const li = document.createElement("li");
-      li.className = "layer-item";
+      li.className = "item-row with-thumb";
       li.setAttribute("aria-selected", String(layer.id === selectedId));
 
-      const visible = document.createElement("input");
-      visible.type = "checkbox";
-      visible.checked = layer.visible;
-      visible.setAttribute("aria-label", "表示する");
-      visible.addEventListener("click", ev => ev.stopPropagation());
-      visible.addEventListener("change", () => {
-        layer.visible = visible.checked;
+      const visible = checkbox(layer.visible, "表示する", input => {
+        layer.visible = input.checked;
         commit();
         requestRender();
       });
@@ -509,17 +743,11 @@
 
       const btns = document.createElement("span");
       btns.className = "btns";
-      for (const [text, title, delta] of [["↑", "手前へ", 1], ["↓", "奥へ", -1]]) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "small";
-        btn.textContent = text;
-        btn.title = title;
-        btn.setAttribute("aria-label", title);
-        btn.disabled = i + delta < 0 || i + delta >= state.layers.length;
-        btn.addEventListener("click", ev => { ev.stopPropagation(); moveLayer(i, delta); });
-        btns.append(btn);
-      }
+      const up = smallButton("↑", "手前へ", () => moveInList(state.layers, i, 1));
+      const down = smallButton("↓", "奥へ", () => moveInList(state.layers, i, -1));
+      up.disabled = i === state.layers.length - 1;
+      down.disabled = i === 0;
+      btns.append(up, down);
 
       li.addEventListener("click", () => selectItem(layer.id));
       li.append(visible, thumb, name, btns);
@@ -528,27 +756,7 @@
 
     const layer = selectedLayer();
     $("#layerProps").hidden = !layer;
-    if (layer) renderLayerTimes(layer);
-  }
-
-  function renderLayerTimes(layer) {
-    const box = $("#layerTimes");
-    box.innerHTML = "";
-    for (const slot of state.time.slots) {
-      if (!slot.on) continue;
-      const label = document.createElement("label");
-      label.className = "chip";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = layer.times[slot.id] !== false;
-      input.addEventListener("change", () => {
-        layer.times[slot.id] = input.checked;
-        commit();
-        requestRender();
-      });
-      label.append(input, document.createTextNode(slot.name));
-      box.append(label);
-    }
+    if (layer) renderHideChips($("#layerHide"), layer);
   }
 
   function deleteSelectedLayer() {
@@ -603,7 +811,7 @@
   function usedAssets() {
     const ids = new Set();
     for (const layer of state.layers) if (layer.kind === "image") ids.add(layer.asset);
-    for (const slot of state.time.slots) if (slot.iconAsset) ids.add(slot.iconAsset);
+    for (const item of state.variants.items) if (item.iconAsset) ids.add(item.iconAsset);
     if (state.preview.bgAsset) ids.add(state.preview.bgAsset);
     const out = {};
     for (const [id, asset] of Object.entries(assets)) if (ids.has(id) || asset.kind === "font") out[id] = asset;
@@ -747,11 +955,7 @@
       const name = document.createElement("span");
       name.textContent = asset.family;
       name.style.fontFamily = `"${asset.family}", sans-serif`;
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "small danger";
-      btn.textContent = "外す";
-      btn.addEventListener("click", () => {
+      const btn = smallButton("外す", "", () => {
         delete assets[id];
         delete env.fontFamilies[id];
         fillFontSelects();
@@ -760,6 +964,7 @@
         requestRender();
         scheduleThumbs();
       });
+      btn.classList.add("danger");
       li.append(name, btn);
       list.append(li);
     }
@@ -777,7 +982,7 @@
     const result = file && await addImageAsset(file);
     if (!result) return;
     if (singleImageTarget === "icon") {
-      Object.assign(currentSlot(), { iconAsset: result.id, icon: "custom" });
+      Object.assign(currentItem(), { iconAsset: result.id, icon: "custom" });
     } else {
       Object.assign(state.preview, { bgAsset: result.id, bg: "image" });
     }
@@ -805,8 +1010,8 @@
 
   function itemPosition(id) {
     if (id === "indicator") {
-      const ind = state.time.indicator;
-      if (ind.pos === "free") return { x: ind.x, y: ind.y };
+      const label = state.variants.label;
+      if (label.pos === "free") return { x: label.x, y: label.y };
       const hit = hits.find(h => h.id === id);
       return hit ? { x: hit.cx / R.virtualWidth(state.size), y: hit.cy / R.BASE_H } : null;
     }
@@ -817,7 +1022,7 @@
   function moveItem(id, x, y) {
     const round = v => Math.round(v * 10000) / 10000;
     if (id === "indicator") {
-      Object.assign(state.time.indicator, { pos: "free", x: round(x), y: round(y) });
+      Object.assign(state.variants.label, { pos: "free", x: round(x), y: round(y) });
       return;
     }
     const layer = state.layers.find(l => l.id === id);
@@ -837,7 +1042,7 @@
       canvas.setPointerCapture(ev.pointerId);
       if (selectedId !== hit.id) {
         selectedId = hit.id;
-        switchTab(hit.id === "indicator" ? "time" : "layers");
+        switchTab(hit.id === "indicator" ? "variants" : "layers");
         syncControls();
       }
       requestRender();
@@ -888,11 +1093,11 @@
 
   // ---------------------------------------------------------------- export
 
-  function renderFull(slotId) {
+  function renderFull(id) {
     const c = document.createElement("canvas");
     c.width = state.size.w;
     c.height = state.size.h;
-    R.render(c.getContext("2d"), state, env, slotId, c.width, c.height);
+    R.render(c.getContext("2d"), state, env, id, c.width, c.height);
     return c;
   }
 
@@ -920,16 +1125,17 @@
     return String(state.fileBase || "").replace(/[\\/:*?"<>|]/g, "_").trim() || "frame";
   }
 
-  function slotFileName(slot) {
-    return `${baseName()}_${state.time.slots.indexOf(slot) + 1}_${slot.id}.png`;
+  function exportName(item) {
+    return item ? `${baseName()}_${state.variants.items.indexOf(item) + 1}_${item.id}.png` : `${baseName()}.png`;
   }
 
   async function downloadPng() {
     try {
       status("書き出し中...");
-      const slot = currentSlot(), blob = await toBlob(renderFull(slot.id));
-      download(blob, slotFileName(slot));
-      status(`${slotFileName(slot)}（${formatBytes(blob.size)}）を保存しました。`);
+      const item = state.variants.enabled ? currentItem() : null;
+      const blob = await toBlob(renderFull(item ? item.id : null));
+      download(blob, exportName(item));
+      status(`${exportName(item)}（${formatBytes(blob.size)}）を保存しました。`);
     } catch (err) {
       status(err.message, true);
     }
@@ -937,10 +1143,10 @@
 
   async function buildZip() {
     const files = [];
-    for (const slot of state.time.slots) {
-      if (!slot.on) continue;
-      const blob = await toBlob(renderFull(slot.id));
-      files.push({ name: slotFileName(slot), data: new Uint8Array(await blob.arrayBuffer()) });
+    for (const item of state.variants.items) {
+      if (!item.on) continue;
+      const blob = await toBlob(renderFull(item.id));
+      files.push({ name: exportName(item), data: new Uint8Array(await blob.arrayBuffer()) });
     }
     return { zip: window.StoreZip.build(files), count: files.length };
   }
@@ -962,8 +1168,11 @@
     state = M.normalize(loadedState);
     assets = sanitizeAssets(loadedAssets);
     selectedId = null;
+    selectedDecoId = null;
     cornerMode = null;
     customSizeOpen = false;
+    if (P.DESIGNS[state.design]) $("#design").value = state.design;
+    showDesignDesc();
     const jobs = loadAllAssets();
     fillFontSelects();
     renderFontList();
@@ -977,7 +1186,7 @@
   }
 
   function saveProject() {
-    const data = { app: "ccf-frame-maker", version: 1, state, assets: usedAssets() };
+    const data = { app: "ccf-frame-maker", version: 2, state, assets: usedAssets() };
     download(new Blob([JSON.stringify(data)], { type: "application/json" }), baseName() + ".frame.json");
     status("プロジェクトを保存しました。");
   }
@@ -1007,34 +1216,28 @@
     try { localStorage.setItem(TAB_KEY, name); } catch (err) { /* storage may be blocked */ }
   }
 
-  function smallButton(text, onClick) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "small";
-    btn.textContent = text;
-    btn.addEventListener("click", onClick);
-    return btn;
+  function showDesignDesc() {
+    const d = P.DESIGNS[$("#design").value];
+    $("#designDesc").textContent = d ? d.desc + "（形・色・飾りが置き換わります。素材と文字、差分の設定はそのまま）" : "";
   }
 
   function buildStaticUI() {
     const design = $("#design");
-    for (const [key, d] of Object.entries(M.DESIGNS)) design.add(new Option(d.label, key));
-    const showDesc = () => {
-      $("#designDesc").textContent = M.DESIGNS[design.value].desc + "（形と色が置き換わります。素材と文字はそのまま）";
-    };
-    design.addEventListener("change", showDesc);
-    showDesc();
+    fillSelect(design, Object.entries(P.DESIGNS).map(([key, d]) => [key, d.label]));
+    design.addEventListener("change", showDesignDesc);
+    showDesignDesc();
     $("#applyDesign").addEventListener("click", () => {
       M.applyDesign(state, design.value);
+      selectedDecoId = null;
       cornerMode = null;
       commit();
       syncControls();
       requestRender();
-      status(`「${M.DESIGNS[design.value].label}」を適用しました。`);
+      status(`「${P.DESIGNS[design.value].label}」を適用しました。`);
     });
 
     const sizeSelect = $("#sizePreset");
-    for (const s of M.SIZES) sizeSelect.add(new Option(s.label, s.key));
+    fillSelect(sizeSelect, P.SIZES.map(s => [s.key, s.label]));
     sizeSelect.addEventListener("change", () => {
       customSizeOpen = sizeSelect.value === "custom";
       if (!customSizeOpen) {
@@ -1046,8 +1249,8 @@
       requestRender();
     });
 
-    for (const layout of Object.values(M.LAYOUTS)) {
-      $("#layoutButtons").append(smallButton(layout.label, () => {
+    for (const layout of Object.values(P.LAYOUTS)) {
+      $("#layoutButtons").append(smallButton(layout.label, "", () => {
         const m = layout.margin;
         state.opening.margin = M.clone(m);
         state.opening.linkMargin = m.t === m.r && m.r === m.b && m.b === m.l;
@@ -1058,8 +1261,8 @@
     }
 
     for (const [key, label] of POSITIONS) {
-      const btn = smallButton(label, () => {
-        state.time.indicator.pos = key;
+      const btn = smallButton(label, "", () => {
+        state.variants.label.pos = key;
         commit();
         syncControls();
         requestRender();
@@ -1067,6 +1270,17 @@
       btn.dataset.pos = key;
       $("#posButtons").append(btn);
     }
+
+    for (const [type, T] of Object.entries(P.DECO_TYPES)) {
+      const btn = smallButton(T.label, "", () => addDecoration(type));
+      btn.title = T.desc;
+      $("#decoAdd").append(btn);
+    }
+
+    fillSelect($("#variantKind"), Object.entries(P.VARIANT_KINDS).map(([key, k]) => [key, k.label]));
+    for (const select of $$("select[data-icons]")) fillSelect(select, P.ICONS);
+    for (const select of $$("select[data-effects]")) fillSelect(select, P.EFFECTS);
+    for (const select of $$("select[data-placements]")) fillSelect(select, P.PLACEMENTS);
 
     buildColorRefs(document);
     bindControls(document);
@@ -1091,17 +1305,30 @@
     $("#downloadPng").addEventListener("click", downloadPng);
     $("#downloadZip").addEventListener("click", downloadZip);
 
+    $("#variantKind").addEventListener("change", ev => changeVariantKind(ev.target.value));
+    $("#addVariant").addEventListener("click", addVariant);
     $("#copyColors").addEventListener("click", () => {
-      const cur = currentSlot();
-      for (const slot of state.time.slots) {
-        for (const key of ["frame1", "frame2", "accent", "text", "tint", "tintAlpha"]) slot[key] = cur[key];
+      const cur = currentItem();
+      for (const item of state.variants.items) {
+        Object.assign(item, { useColors: cur.useColors, frame1: cur.frame1, frame2: cur.frame2, accent: cur.accent, text: cur.text });
       }
       commit();
+      syncControls();
       requestRender();
-      status(`「${cur.name}」の色を、すべての時間帯にコピーしました。`);
+      status(`「${cur.name}」の色の設定を、すべての差分にコピーしました。`);
     });
     $("#slotIconPick").addEventListener("click", () => pickSingleImage("icon"));
     $("#singleImageFile").addEventListener("change", ev => onSingleImage(ev.target.files[0]));
+
+    $("#decoReseed").addEventListener("click", () => {
+      const d = selectedDeco();
+      if (!d) return;
+      d.seed = (d.seed | 0) + 1;
+      commit();
+      requestRender();
+    });
+    $("#decoDup").addEventListener("click", duplicateDeco);
+    $("#decoDelete").addEventListener("click", deleteDeco);
 
     $("#addImage").addEventListener("click", () => { $("#imageFile").value = ""; $("#imageFile").click(); });
     $("#imageFile").addEventListener("change", ev => addImageFiles(ev.target.files));
@@ -1125,7 +1352,7 @@
     $("#bgImagePick").addEventListener("click", () => pickSingleImage("bg"));
     $("#bgImageClear").addEventListener("click", () => {
       state.preview.bgAsset = null;
-      if (state.preview.bg === "image") state.preview.bg = "sky";
+      if (state.preview.bg === "image") state.preview.bg = "scenery";
       commit();
       syncControls();
     });
@@ -1177,7 +1404,7 @@
     wireEvents();
     let tab = "frame";
     try { tab = localStorage.getItem(TAB_KEY) || tab; } catch (err) { /* storage may be blocked */ }
-    switchTab($$("[data-tab]").some(b => b.dataset.tab === tab) ? tab : "frame");
+    switchTab(TABS.includes(tab) ? tab : "frame");
 
     let saved = null;
     try {
@@ -1195,7 +1422,7 @@
     } else {
       await loadProject(M.defaultState(), {});
       status(autosaveEnabled
-        ? "準備できました。「枠」タブで形を、「時間帯」タブで朝・昼・夜の見た目を決めていきます。"
+        ? "準備できました。「枠」タブで形と色を、「飾り」タブで蔦や花などを重ねていきます。"
         : "準備できました。このブラウザでは自動保存が使えないため、作業内容は「保存など」タブのプロジェクト保存で残してください。");
     }
   }

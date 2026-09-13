@@ -1,9 +1,10 @@
 /*!
- * render.v1.js - draws one foreground frame for one time slot
+ * render.v2.js - draws one foreground frame (optionally for one variant)
  *
  * Drawing order (back to front):
- *   window tint -> window shadow -> frame fill + grain -> "back" layers
- *   -> lines -> corner ornaments -> time indicator -> "front" layers
+ *   window tint -> window effect -> window shadow -> frame fill + grain
+ *   -> "back" layers -> lines -> corner ornaments -> decorations
+ *   -> variant label -> "front" layers
  *
  * The frame is "the whole canvas minus the window", filled with the even-odd
  * rule. Lines are cut out of stroke bands around the window path, so they
@@ -147,6 +148,26 @@
       return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
     });
     return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? "#1b1b1f" : "#ffffff";
+  }
+
+  // ---------------------------------------------------------------- variants
+
+  // The colors and window treatment in effect: the palette, overridden by a variant when variants are on.
+  function resolveSlot(state, id) {
+    const slot = Object.assign({ id: "base", name: "", sub: "", icon: "none", iconAsset: null,
+      tint: "#000000", tintAlpha: 0, effect: "none", effectAmount: 0 }, state.palette);
+    if (!state.variants.enabled) return slot;
+    const items = state.variants.items;
+    const item = items.find(i => i.id === id) || items.find(i => i.on) || items[0];
+    if (!item) return slot;
+    Object.assign(slot, { id: item.id, name: item.name, sub: item.sub, icon: item.icon, iconAsset: item.iconAsset,
+      tint: item.tint, tintAlpha: item.tintAlpha, effect: item.effect, effectAmount: item.effectAmount });
+    if (item.useColors) Object.assign(slot, { frame1: item.frame1, frame2: item.frame2, accent: item.accent, text: item.text });
+    return slot;
+  }
+
+  function isVisible(state, obj, slotId) {
+    return !(state.variants.enabled && obj.hideIn && obj.hideIn[slotId]);
   }
 
   // ---------------------------------------------------------------- scratch canvases
@@ -392,7 +413,7 @@
   const ROTATE_IN_VERTICAL = "ー―‐－-~～〜…‥「」『』（）()【】〈〉《》[]<>＜＞";
 
   function fontStack(key, name, env) {
-    const fonts = window.FrameModel.FONTS;
+    const fonts = window.FramePresets.FONTS;
     if (typeof key === "string" && key.startsWith("font:")) {
       const family = env.fontFamilies[key.slice(5)];
       if (family) return `"${family}",${fonts.gothic.stack}`;
@@ -434,8 +455,8 @@
     ctx.closePath();
   }
 
-  function drawIcon(g, slot, cx, cy, r, color) {
-    const ctx = g.ctx, kind = slot.icon;
+  function drawIcon(g, item, cx, cy, r, color) {
+    const ctx = g.ctx, kind = item.icon;
     const circle = (x, y, rad) => { ctx.beginPath(); ctx.arc(x, y, rad, 0, TAU); ctx.fill(); };
     const rays = (x, y, from, to, a0, a1, count) => {
       ctx.beginPath();
@@ -449,6 +470,7 @@
     ctx.save();
     ctx.fillStyle = ctx.strokeStyle = color;
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.lineWidth = r * 0.14;
     if (kind === "sun") {
       circle(cx, cy, r * 0.42);
@@ -508,26 +530,28 @@
       roundRect(ctx, cx - r * 0.74, cy + r * 0.1, r * 1.52, r * 0.38, r * 0.19);
       ctx.fill();
     } else if (kind === "custom") {
-      const img = g.env.images.get(slot.iconAsset);
+      const img = g.env.images.get(item.iconAsset);
       if (img && img.complete && img.naturalWidth) {
         const sc = Math.min(r * 2 / img.naturalWidth, r * 2 / img.naturalHeight);
         const w = img.naturalWidth * sc, h = img.naturalHeight * sc;
         ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
       }
+    } else if (window.FrameIcons && window.FrameIcons[kind]) {
+      window.FrameIcons[kind](ctx, cx, cy, r);
     }
     ctx.restore();
   }
 
-  // ---------------------------------------------------------------- time indicator
+  // ---------------------------------------------------------------- variant label
 
-  function enabledSlots(state) {
-    return state.time.slots.filter(s => s.on);
+  function enabledItems(state) {
+    return state.variants.items.filter(i => i.on);
   }
 
   const INDICATORS = {
     badge: {
       measure(g, s, stack) {
-        const ctx = g.ctx, ind = g.state.time.indicator, slot = g.slot;
+        const ctx = g.ctx, ind = g.state.variants.label, slot = g.slot;
         setFont(ctx, 34 * s, true, stack);
         let textW = ctx.measureText(slot.name).width;
         if (ind.showSub && slot.sub) {
@@ -538,7 +562,7 @@
         return { w: 20 * s + icon + textW + 26 * s, h: 76 * s, textW };
       },
       draw(g, x, y, box, s, stack) {
-        const ctx = g.ctx, ind = g.state.time.indicator, slot = g.slot;
+        const ctx = g.ctx, ind = g.state.variants.label, slot = g.slot;
         ctx.beginPath();
         roundRect(ctx, x, y, box.w, box.h, box.h / 2);
         ctx.fillStyle = rgba(slot.accent, ind.bgAlpha);
@@ -565,15 +589,15 @@
       measure(g, s, stack) {
         const ctx = g.ctx;
         setFont(ctx, 24 * s, true, stack);
-        const segs = enabledSlots(g.state).map(slot => {
-          const icon = slot.icon === "none" ? 0 : 28 * s + 8 * s;
-          return { slot, w: 14 * s * 2 + icon + ctx.measureText(slot.name).width };
+        const segs = enabledItems(g.state).map(item => {
+          const icon = item.icon === "none" ? 0 : 28 * s + 8 * s;
+          return { item, w: 14 * s * 2 + icon + ctx.measureText(item.name).width };
         });
         const inner = 5 * s;
         return { w: segs.reduce((sum, seg) => sum + seg.w, 0) + inner * 2, h: 56 * s, segs, inner };
       },
       draw(g, x, y, box, s, stack) {
-        const ctx = g.ctx, ind = g.state.time.indicator, cur = g.slot;
+        const ctx = g.ctx, ind = g.state.variants.label, cur = g.slot;
         ctx.beginPath();
         roundRect(ctx, x, y, box.w, box.h, box.h / 2);
         ctx.fillStyle = rgba(cur.frame2, ind.bgAlpha * 0.85);
@@ -584,7 +608,7 @@
         let sx = x + box.inner;
         const segH = box.h - box.inner * 2;
         for (const seg of box.segs) {
-          const active = seg.slot.id === cur.id;
+          const active = seg.item.id === cur.id;
           if (active) {
             ctx.beginPath();
             roundRect(ctx, sx, y + box.inner, seg.w, segH, segH / 2);
@@ -594,24 +618,24 @@
           const fg = active ? contrastText(cur.accent) : rgba(cur.text, 0.5);
           let tx = sx + 14 * s;
           const cy = y + box.h / 2;
-          if (seg.slot.icon !== "none") {
-            drawIcon(g, seg.slot, tx + 14 * s, cy, 14 * s, fg);
+          if (seg.item.icon !== "none") {
+            drawIcon(g, seg.item, tx + 14 * s, cy, 14 * s, fg);
             tx += 36 * s;
           }
           setFont(ctx, 24 * s, true, stack);
           ctx.fillStyle = fg;
           ctx.textBaseline = "middle";
-          spacedText(ctx, seg.slot.name, tx, cy + 1 * s, 0, "left", "fill");
+          spacedText(ctx, seg.item.name, tx, cy + 1 * s, 0, "left", "fill");
           sx += seg.w;
         }
       },
     },
     dial: {
       measure(g, s) {
-        return { w: 224 * s, h: (g.state.time.indicator.showSub ? 184 : 164) * s };
+        return { w: 224 * s, h: (g.state.variants.label.showSub ? 184 : 164) * s };
       },
       draw(g, x, y, box, s, stack) {
-        const ctx = g.ctx, ind = g.state.time.indicator, cur = g.slot;
+        const ctx = g.ctx, ind = g.state.variants.label, cur = g.slot;
         if (ind.bgAlpha > 0) {
           ctx.beginPath();
           roundRect(ctx, x, y, box.w, box.h, 20 * s);
@@ -635,11 +659,11 @@
         ctx.moveTo(cx - R - 16 * s, horizon);
         ctx.lineTo(cx + R + 16 * s, horizon);
         ctx.stroke();
-        const slots = enabledSlots(g.state);
-        slots.forEach((slot, i) => {
-          const a = Math.PI + Math.PI * (i + 0.5) / slots.length;
+        const items = enabledItems(g.state);
+        items.forEach((item, i) => {
+          const a = Math.PI + Math.PI * (i + 0.5) / items.length;
           const px = cx + Math.cos(a) * R, py = horizon + Math.sin(a) * R;
-          if (slot.id !== cur.id) {
+          if (item.id !== cur.id) {
             ctx.beginPath();
             ctx.arc(px, py, 5 * s, 0, TAU);
             ctx.fillStyle = rgba(cur.text, 0.45);
@@ -649,7 +673,7 @@
           ctx.save();
           ctx.shadowColor = cur.accent;
           ctx.shadowBlur = 18 * s * g.k;
-          drawIcon(g, slot, px, py, 24 * s, cur.accent);
+          drawIcon(g, item, px, py, 24 * s, cur.accent);
           ctx.restore();
         });
         ctx.fillStyle = cur.text;
@@ -665,7 +689,7 @@
     },
     label: {
       measure(g, s, stack) {
-        const ctx = g.ctx, ind = g.state.time.indicator, slot = g.slot;
+        const ctx = g.ctx, ind = g.state.variants.label, slot = g.slot;
         setFont(ctx, 42 * s, true, stack);
         const nameW = spacedWidth(ctx, slot.name, 42 * s * 0.15);
         const sub = ind.showSub && slot.sub;
@@ -673,7 +697,7 @@
         return { w: nameW + (56 * s + 18 * s) * 2 + pad * 2, h: 42 * s * 1.25 + (sub ? 26 * s : 0) + pad * 2, nameW, pad };
       },
       draw(g, x, y, box, s, stack) {
-        const ctx = g.ctx, ind = g.state.time.indicator, slot = g.slot;
+        const ctx = g.ctx, ind = g.state.variants.label, slot = g.slot;
         // A name plate keeps the label readable when it sits on top of frame lines.
         if (ind.bgAlpha > 0) {
           ctx.beginPath();
@@ -714,8 +738,8 @@
   };
 
   function drawIndicator(g) {
-    const ind = g.state.time.indicator, style = INDICATORS[ind.style];
-    if (!style) return;
+    const v = g.state.variants, ind = v.label, style = INDICATORS[ind.style];
+    if (!v.enabled || !style) return;
     const ctx = g.ctx, s = ind.scale, stack = fontStack(ind.font, ind.fontName, g.env);
     ctx.save();
     const box = style.measure(g, s, stack);
@@ -739,7 +763,7 @@
   // ---------------------------------------------------------------- layers
 
   function layerText(layer, slot) {
-    return String(layer.text || "").replace(/\{時間帯\}/g, slot.name).replace(/\{英語\}/g, slot.sub);
+    return String(layer.text || "").replace(/\{(差分|時間帯)\}/g, slot.name).replace(/\{英語\}/g, slot.sub);
   }
 
   function recolored(env, img, assetId, color) {
@@ -848,7 +872,7 @@
 
   function drawLayers(g, order) {
     for (const layer of g.state.layers) {
-      if (layer.order !== order || !layer.visible || layer.times[g.slot.id] === false) continue;
+      if (layer.order !== order || !layer.visible || !g.visible(layer)) continue;
       const ctx = g.ctx;
       ctx.save();
       if (layer.clip === "frame" || layer.clip === "window") {
@@ -864,24 +888,129 @@
     }
   }
 
+  // ---------------------------------------------------------------- preview scenery
+
+  // A sample landscape drawn behind the preview only (never exported).
+  const SCENERY = {
+    morning: { sky: [["#9fcbe8", 0], ["#f6d7b8", 0.6], ["#f4b98f", 1]], far: "#9fb2c1", near: "#7f9a78", house: "#5b5048", sun: ["#fff1c9", 0.2, 0.42] },
+    day: { sky: [["#4ea4e0", 0], ["#a8d6f3", 0.6], ["#e3f3fb", 1]], far: "#80a7c4", near: "#6d9a5e", house: "#4f4a45", sun: ["#fffbe8", 0.66, 0.24] },
+    evening: { sky: [["#3d3368", 0], ["#b75a6e", 0.5], ["#f39a55", 1]], far: "#6a4a6e", near: "#3f3240", house: "#2a2229", lit: "#ffc86b", sun: ["#ffc07a", 0.8, 0.5] },
+    night: { sky: [["#05081a", 0], ["#15204a", 0.6], ["#2b3668", 1]], far: "#1e2748", near: "#10162a", house: "#0b0f1d", lit: "#ffd27a", moon: true },
+    overcast: { sky: [["#7f8a96", 0], ["#aab3bc", 0.6], ["#c4cad0", 1]], far: "#6f7a84", near: "#5c6e57", house: "#403d3b", lit: "#f1d9a6" },
+    snowy: { sky: [["#aebfce", 0], ["#d7e0e8", 0.7], ["#e9eef2", 1]], far: "#c3ced8", near: "#f2f5f8", house: "#56504c", lit: "#ffd9a0" },
+  };
+  const SCENE_OF = {
+    morning: "morning", day: "day", evening: "evening", night: "night", sunny: "day", cloudy: "overcast", rain: "overcast",
+    fog: "overcast", storm: "overcast", snow: "snowy", winter: "snowy", autumn: "evening", madness: "night",
+  };
+
+  function sceneryFor(state, id) {
+    return state.variants.enabled ? SCENE_OF[id] || "day" : "day";
+  }
+
+  function drawScenery(c, w, h, key) {
+    const L = SCENERY[key] || SCENERY.day, u = h / 900;
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    const sky = c.createLinearGradient(0, 0, 0, h);
+    for (const [color, stop] of L.sky) sky.addColorStop(stop, color);
+    c.fillStyle = sky;
+    c.fillRect(0, 0, w, h);
+    if (L.moon) {
+      const rand = mulberry32(7);
+      c.fillStyle = "#ffffff";
+      for (let i = 0; i < 140; i++) {
+        c.globalAlpha = 0.25 + rand() * 0.75;
+        c.beginPath();
+        c.arc(rand() * w, rand() * h * 0.6, (0.5 + rand() * 1.5) * u, 0, TAU);
+        c.fill();
+      }
+      c.globalAlpha = 1;
+      c.save();
+      c.shadowColor = "rgba(255,240,200,.8)";
+      c.shadowBlur = 40 * u;
+      c.fillStyle = "#fdf3d0";
+      c.beginPath();
+      c.arc(w * 0.74, h * 0.24, h * 0.055, 0, TAU);
+      c.fill();
+      c.restore();
+    }
+    if (L.sun) {
+      const [color, sx, sy] = L.sun;
+      c.save();
+      c.shadowColor = color;
+      c.shadowBlur = 70 * u;
+      c.fillStyle = color;
+      c.beginPath();
+      c.arc(sx * w, sy * h, h * 0.065, 0, TAU);
+      c.fill();
+      c.restore();
+    }
+    c.fillStyle = L.far;
+    c.beginPath();
+    c.moveTo(0, h * 0.6);
+    for (const [px, py] of [[0.12, 0.48], [0.25, 0.58], [0.4, 0.45], [0.55, 0.56], [0.7, 0.47], [0.85, 0.57], [1, 0.5]]) {
+      c.lineTo(px * w, py * h);
+    }
+    c.lineTo(w, h);
+    c.lineTo(0, h);
+    c.fill();
+    c.fillStyle = L.near;
+    c.beginPath();
+    c.moveTo(0, h * 0.76);
+    c.bezierCurveTo(w * 0.3, h * 0.66, w * 0.6, h * 0.8, w, h * 0.7);
+    c.lineTo(w, h);
+    c.lineTo(0, h);
+    c.fill();
+    const hx = w * 0.26, base = h * 0.75, hw = w * 0.1, hh = h * 0.11;
+    c.fillStyle = L.house;
+    c.fillRect(hx, base - hh, hw, hh + h * 0.04);
+    c.beginPath();
+    c.moveTo(hx - hw * 0.12, base - hh);
+    c.lineTo(hx + hw / 2, base - hh - hh * 0.75);
+    c.lineTo(hx + hw * 1.12, base - hh);
+    c.closePath();
+    c.fill();
+    c.fillRect(hx + hw * 0.7, base - hh - hh * 0.75, hw * 0.12, hh * 0.5);
+    if (L.lit) {
+      c.save();
+      c.fillStyle = L.lit;
+      c.shadowColor = L.lit;
+      c.shadowBlur = 18 * u;
+      for (const [wx, wy] of [[0.16, 0.3], [0.62, 0.3], [0.16, 0.62], [0.62, 0.62]]) {
+        c.fillRect(hx + hw * wx, base - hh + hh * wy, hw * 0.2, hh * 0.2);
+      }
+      c.restore();
+    }
+    c.restore();
+  }
+
   // ---------------------------------------------------------------- entry points
 
   // env: { images: Map<id, HTMLImageElement>, recolorCache: Map, fontFamilies: { id: family } }
-  // Returns hit boxes (virtual units) in paint order: back layers, indicator, front layers.
+  // Returns hit boxes (virtual units) in paint order: back layers, label, front layers.
   function render(ctx, state, env, slotId, width, height) {
-    const slot = state.time.slots.find(s => s.id === slotId) || state.time.slots[0];
-    const g = { ctx, state, env, slot, W: width, H: height, k: height / BASE_H,
-      VW: virtualWidth(state.size), hits: [] };
+    const slot = resolveSlot(state, slotId);
+    const g = {
+      ctx, state, env, slot, W: width, H: height, k: height / BASE_H, VW: virtualWidth(state.size), hits: [],
+      openingRect: () => openingRect(state),
+      traceWindow: c => traceWindow(c, state),
+      traceFrame: c => traceFrame(c, state),
+      color: ref => resolveColor(ref, slot),
+      visible: obj => isVisible(state, obj, slot.id),
+    };
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, width, height);
     ctx.setTransform(g.k, 0, 0, g.k, 0, 0);
     drawTint(g);
+    if (window.FrameEffects) window.FrameEffects.draw(g);
     drawShadow(g);
     drawFill(g);
     drawLayers(g, "back");
     drawLines(g);
     drawOrnaments(g);
+    if (window.FrameDeco) window.FrameDeco.drawAll(g);
     drawIndicator(g);
     drawLayers(g, "front");
     ctx.restore();
@@ -937,5 +1066,6 @@
 
   window.FrameRender = {
     BASE_H, render, drawGrid, drawSelection, hitTest, virtualWidth, gridUnits, openingRect,
+    resolveSlot, drawScenery, sceneryFor,
   };
 })();

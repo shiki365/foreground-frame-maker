@@ -141,11 +141,16 @@
   .drop-hint { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(20, 22, 40, .72);
                color: #fff; font-size: 20px; font-weight: 700; z-index: 10; pointer-events: none; }
   footer { border-top: 1px solid var(--line); padding: 16px 24px 40px; color: var(--muted); font-size: 12px; line-height: 1.9; }
+  footer a { color: #a8abff; }
+  .home-link { display: inline-block; margin-bottom: 4px; color: var(--muted); font-size: 12px; text-decoration: none; }
+  .home-link:hover { color: var(--fg); text-decoration: underline; }
+  .home-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body>
 
 <header>
+  <a class="home-link" href="https://shiki365.github.io/">‹ shiki365 のツール置き場</a>
   <h1>前景フレームメーカー</h1>
   <p>ココフォリアの前景に使う「枠」画像を作れます。形・色・飾りを組み合わせてデザインし、天気や時間帯などの差分もまとめて書き出せます。すべてブラウザの中だけで処理され、画像がどこかに送られることはありません。</p>
 </header>
@@ -550,6 +555,7 @@
 <footer>
   ブラウザだけで動く無料ツールです。作った画像は自由に使えます（読み込んだ配布素材・フォントは、それぞれの利用規約に従ってください）。<br>
   TRPG オンラインセッションツールでの利用を想定していますが、いずれのサービスとも関係のない<strong>非公式</strong>のツールです。<br>
+  <a href="https://shiki365.github.io/">ほかのツールも見る（shiki365 のツール置き場）</a> ・ <a href="https://shiki365.github.io/#contact">不具合の報告・感想</a><br>
   v2 ・ 最終更新 2026-09-14
 </footer>
 

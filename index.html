@@ -356,7 +356,7 @@
           <div class="row"><label>文字</label><textarea data-bind="layer.text" rows="2"></textarea></div>
           <p class="desc" style="margin-top: 4px;">差分を作っているときは、<code>{差分}</code> が「朝」「雨」などに、<code>{英語}</code> が「MORNING」などに置き換わります。</p>
           <div class="row"><label>フォント</label><select data-bind="layer.font" data-fonts></select></div>
-          <div class="row sub" data-show="layer.font=name"><label>フォント名</label><input type="text" data-bind="layer.fontName" placeholder="例）BIZ UDPGothic"></div>
+          <div class="row sub" data-show="layer.font=name"><label>フォント名</label><span class="pc-font"><input type="text" data-bind="layer.fontName" placeholder="例）BIZ UDPGothic" aria-label="文字のフォント名" autocomplete="off" spellcheck="false"><button type="button" class="small" data-pc-fonts>一覧から選ぶ</button></span></div>
           <div class="row"><label>文字サイズ</label><span class="with-value"><input type="range" data-bind="layer.size" min="8" max="400"><output data-out="layer.size"></output></span></div>
           <div class="row"><label>書き方</label><span class="pair">
             <label class="check"><input type="checkbox" data-bind="layer.bold"> 太字</label>
@@ -462,7 +462,7 @@
             <div class="row"><label>背景の濃さ</label><span class="with-value"><input type="range" data-bind="variants.label.bgAlpha" min="0" max="1" step="0.05"><output data-out="variants.label.bgAlpha" data-fmt="pct"></output></span></div>
             <div class="row" data-show="variants.label.style!=tabs"><label>英語表記</label><label class="check"><input type="checkbox" data-bind="variants.label.showSub"> 表示する</label></div>
             <div class="row"><label>フォント</label><select data-bind="variants.label.font" data-fonts></select></div>
-            <div class="row sub" data-show="variants.label.font=name"><label>フォント名</label><input type="text" data-bind="variants.label.fontName" placeholder="例）Yu Mincho"></div>
+            <div class="row sub" data-show="variants.label.font=name"><label>フォント名</label><span class="pc-font"><input type="text" data-bind="variants.label.fontName" placeholder="例）Yu Mincho" aria-label="差分の表示のフォント名" autocomplete="off" spellcheck="false"><button type="button" class="small" data-pc-fonts>一覧から選ぶ</button></span></div>
           </div>
           <p class="desc">プレビュー上でドラッグしても動かせます。</p>
         </fieldset>
@@ -485,7 +485,7 @@
         <legend>フォント</legend>
         <div class="row wide"><span class="btns"><button type="button" id="addFont">フォントファイルを読み込む</button></span></div>
         <ul class="font-list" id="fontList"></ul>
-        <p class="desc">.ttf / .otf / .woff / .woff2 が使えます。PCにインストール済みのフォントは、フォント欄の「名前で指定」から使えます。</p>
+        <p class="desc">.ttf / .otf / .woff / .woff2 が使えます。PCにインストール済みのフォントは、フォント欄の「名前で指定」から使えます（Chrome / Edge では「一覧から選ぶ」で、見た目を見ながら選べます）。</p>
       </fieldset>
 
       <fieldset>
@@ -556,7 +556,7 @@
   ブラウザだけで動く無料ツールです。作った画像は自由に使えます（読み込んだ配布素材・フォントは、それぞれの利用規約に従ってください）。<br>
   TRPG オンラインセッションツールでの利用を想定していますが、いずれのサービスとも関係のない<strong>非公式</strong>のツールです。<br>
   <a href="https://shiki365.github.io/">ほかのツールも見る（shiki365 のツール置き場）</a> ・ <a href="https://shiki365.github.io/#contact">不具合の報告・感想</a><br>
-  v2 ・ 最終更新 2026-09-14
+  v2.1 ・ 最終更新 2026-09-17
 </footer>
 
 <script src="zip.v1.js"></script>
@@ -567,6 +567,7 @@
 <script src="deco-extra.v1.js"></script>
 <script src="model.v2.js"></script>
 <script src="render.v2.js"></script>
+<script src="pcfonts.v1.js"></script>
 <script src="app.v2.js"></script>
 </body>
 </html>

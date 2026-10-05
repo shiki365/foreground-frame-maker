@@ -1,5 +1,5 @@
 /*!
- * app.v2.js - 前景フレームメーカー (UI)
+ * app.v3.js - 前景フレームメーカー (UI)
  *
  * The whole project is one plain JSON object (`state`), so undo, autosave and
  * project files are all just snapshots of it. Images and fonts live apart in
@@ -16,6 +16,11 @@
  */
 (function () {
   "use strict";
+
+  // Texts are written in Japanese and go through t() (i18n.v1.js); the Japanese text is the key.
+  // fillSelect(), smallButton() and checkbox() translate the labels they are given.
+  const t = (text, vars) => (window.I18n ? window.I18n.t(text, vars)
+    : vars ? text.replace(/\{(\w+)\}/g, (all, name) => (name in vars ? String(vars[name]) : all)) : text);
 
   const M = window.FrameModel, R = window.FrameRender, P = window.FramePresets;
   const $ = sel => document.querySelector(sel);
@@ -159,10 +164,11 @@
       color.type = "color";
       const options = host.dataset.none ? [["none", host.dataset.none]] : [];
       options.push(...P.COLOR_REFS, ["custom", "色を指定"]);
-      for (const [value, text] of options) select.add(new Option(text, value));
-      const label = host.closest(".row")?.querySelector(":scope > label")?.textContent.trim() || "色";
+      for (const [value, text] of options) select.add(new Option(t(text), value));
+      // The row's label is still Japanese here (the page is translated once it has loaded).
+      const label = t(host.closest(".row")?.querySelector(":scope > label")?.textContent.trim() || "色");
       select.setAttribute("aria-label", label);
-      color.setAttribute("aria-label", label + "（指定色）");
+      color.setAttribute("aria-label", label + t("（指定色）"));
       host.append(select, color);
       const apply = commitAfter => () => {
         setPath(path, select.value === "custom" ? color.value : select.value);
@@ -186,13 +192,13 @@
 
   function fillSelect(select, options) {
     select.innerHTML = "";
-    for (const [value, text] of options) select.add(new Option(text, value));
+    for (const [value, text] of options) select.add(new Option(t(text), value));
   }
 
   function fillFontSelects() {
     const options = Object.entries(P.FONTS).map(([key, font]) => [key, font.label]);
     for (const [id, asset] of Object.entries(assets)) {
-      if (asset.kind === "font") options.push(["font:" + id, "読込: " + asset.family]);
+      if (asset.kind === "font") options.push(["font:" + id, t("読込: ") + asset.family]);
     }
     options.push(["name", "名前で指定（PCのフォント）"]);
     for (const select of $$("select[data-fonts]")) {
@@ -273,17 +279,17 @@
 
   function updateInfo() {
     const u = R.gridUnits(state.size.w, state.size.h);
-    $("#sizeInfo").innerHTML = `ココフォリアの前景は <b>横幅 ${u.w} ・ 縦幅 ${u.h}</b> にすると比率がぴったりです（幅 1 = 24px）。`
-      + (u.exact ? "" : "比率が割り切れないため、近い値です。");
+    $("#sizeInfo").innerHTML = t("ココフォリアの前景は <b>横幅 {w} ・ 縦幅 {h}</b> にすると比率がぴったりです（幅 1 = 24px）。", { w: u.w, h: u.h })
+      + (u.exact ? "" : t("比率が割り切れないため、近い値です。"));
     const r = R.openingRect(state), VW = R.virtualWidth(state.size), k = state.size.h / R.BASE_H;
     const cells = (v, total, units) => (v / total * units).toFixed(1);
-    $("#openingInfo").textContent = `窓の大きさ ${Math.round(r.w * k)} × ${Math.round(r.h * k)} px。`
-      + `盤面では 横 ${cells(r.w, VW, u.w)} × 縦 ${cells(r.h, R.BASE_H, u.h)} マス分`
-      + `（左上から ${cells(r.x0, VW, u.w)}, ${cells(r.y0, R.BASE_H, u.h)} マスの位置）です。`;
+    $("#openingInfo").textContent = t("窓の大きさ {w} × {h} px。", { w: Math.round(r.w * k), h: Math.round(r.h * k) })
+      + t("盤面では 横 {w} × 縦 {h} マス分（左上から {x}, {y} マスの位置）です。",
+        { w: cells(r.w, VW, u.w), h: cells(r.h, R.BASE_H, u.h), x: cells(r.x0, VW, u.w), y: cells(r.y0, R.BASE_H, u.h) });
     const item = currentItem(), own = state.variants.enabled && item && item.useColors;
     $("#colorsNote").textContent = own
-      ? `いまは差分「${item.name}」だけの色を編集しています。全体の色に戻すには「差分」タブで「この差分だけの色にする」を外します。`
-      : "枠全体の色です。差分ごとに色を変えたいときは「差分」タブで設定します。";
+      ? t("いまは差分「{name}」だけの色を編集しています。全体の色に戻すには「差分」タブで「この差分だけの色にする」を外します。", { name: item.name })
+      : t("枠全体の色です。差分ごとに色を変えたいときは「差分」タブで設定します。");
   }
 
   // ---------------------------------------------------------------- history
@@ -423,10 +429,10 @@
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "small";
-    btn.textContent = text;
+    btn.textContent = t(text);
     if (title) {
-      btn.title = title;
-      btn.setAttribute("aria-label", title);
+      btn.title = t(title);
+      btn.setAttribute("aria-label", t(title));
     }
     btn.addEventListener("click", ev => {
       ev.stopPropagation();
@@ -439,7 +445,7 @@
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = checked;
-    input.setAttribute("aria-label", label);
+    input.setAttribute("aria-label", t(label));
     input.addEventListener("click", ev => ev.stopPropagation());
     input.addEventListener("change", () => onChange(input));
     return input;
@@ -499,7 +505,7 @@
         if (!item.on && item.id !== v.current) continue;
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.textContent = item.name || "（名前なし）";
+        btn.textContent = item.name || t("（名前なし）");
         btn.setAttribute("aria-pressed", String(item.id === v.current));
         btn.addEventListener("click", () => setCurrentVariant(item.id));
         seg.append(btn);
@@ -507,7 +513,7 @@
     }
 
     $("#variantKind").value = v.kind;
-    $("#variantKindDesc").textContent = P.VARIANT_KINDS[v.kind].desc;
+    $("#variantKindDesc").textContent = t(P.VARIANT_KINDS[v.kind].desc);
 
     const list = $("#variantList");
     list.innerHTML = "";
@@ -518,7 +524,7 @@
       const on = checkbox(item.on, "書き出す", input => {
         if (!input.checked && v.items.filter(i => i.on).length === 1) {
           input.checked = true;
-          status("差分は 1 つ以上オンにしてください。", true);
+          status(t("差分は 1 つ以上オンにしてください。"), true);
           return;
         }
         item.on = input.checked;
@@ -528,11 +534,11 @@
       });
       const name = document.createElement("span");
       name.className = "name";
-      name.textContent = item.name || "（名前なし）";
+      name.textContent = item.name || t("（名前なし）");
       if (!item.on) {
         const tag = document.createElement("span");
         tag.className = "tag";
-        tag.textContent = "書き出さない";
+        tag.textContent = t("書き出さない");
         name.append(tag);
       }
       const btns = document.createElement("span");
@@ -549,27 +555,27 @@
 
     $("#variantTitle").textContent = cur ? cur.name : "";
     $("#downloadZip").hidden = !v.enabled;
-    $("#downloadPng").textContent = v.enabled ? "この差分をPNG保存" : "PNGで保存";
+    $("#downloadPng").textContent = t(v.enabled ? "この差分をPNG保存" : "PNGで保存");
     $("#thumbs").hidden = !v.enabled;
   }
 
   function addVariant() {
     const items = state.variants.items, n = items.length + 1;
     const item = M.variantItem(Object.assign(M.clone(currentItem()), {
-      id: M.newId("v"), on: true, name: `パターン${n}`, sub: `PATTERN ${n}`,
+      id: M.newId("v"), on: true, name: t("パターン{n}", { n }), sub: `PATTERN ${n}`,
     }));
     items.push(item);
     state.variants.current = item.id;
     commit();
     syncControls();
     requestRender();
-    status("今の差分をもとに、新しい差分を追加しました。");
+    status(t("今の差分をもとに、新しい差分を追加しました。"));
   }
 
   function deleteVariant(index) {
     const items = state.variants.items;
     if (items.length <= 1) {
-      status("差分は 1 つ以上必要です。使わないときは「差分を作る」をオフにしてください。", true);
+      status(t("差分は 1 つ以上必要です。使わないときは「差分を作る」をオフにしてください。"), true);
       return;
     }
     const [removed] = items.splice(index, 1);
@@ -578,7 +584,7 @@
     commit();
     syncControls();
     requestRender();
-    status(`「${removed.name}」を削除しました（Ctrl+Z で戻せます）。`);
+    status(t("「{name}」を削除しました（Ctrl+Z で戻せます）。", { name: removed.name }));
   }
 
   function changeVariantKind(kind) {
@@ -589,7 +595,7 @@
     commit();
     syncControls();
     requestRender();
-    status(`差分の種類を「${P.VARIANT_KINDS[kind].label}」にしました。名前や色は自由に変えられます。`);
+    status(t("差分の種類を「{label}」にしました。名前や色は自由に変えられます。", { label: t(P.VARIANT_KINDS[kind].label) }));
   }
 
   // ---------------------------------------------------------------- decorations
@@ -601,7 +607,7 @@
     commit();
     syncControls();
     requestRender();
-    status(`「${P.DECO_TYPES[type].label}」を追加しました。`);
+    status(t("「{label}」を追加しました。", { label: t(P.DECO_TYPES[type].label) }));
   }
 
   function renderDecoList() {
@@ -621,7 +627,7 @@
       });
       const name = document.createElement("span");
       name.className = "name";
-      name.textContent = T.label;
+      name.textContent = t(T.label);
       const btns = document.createElement("span");
       btns.className = "btns";
       const up = smallButton("↑", "手前へ", () => moveInList(decos, i, 1));
@@ -641,10 +647,10 @@
     $("#decoProps").hidden = !d;
     if (!d) return;
     const T = P.DECO_TYPES[d.type];
-    $("#decoTitle").textContent = T.label;
-    $("#decoDesc").textContent = T.desc;
-    $("#decoColor1Label").textContent = T.colorNames[0];
-    $("#decoColor2Label").textContent = T.colorNames[1];
+    $("#decoTitle").textContent = t(T.label);
+    $("#decoDesc").textContent = t(T.desc);
+    $("#decoColor1Label").textContent = t(T.colorNames[0]);
+    $("#decoColor2Label").textContent = t(T.colorNames[1]);
     const uses = T.uses.split(" ");
     for (const el of $$("#decoProps [data-uses]")) el.hidden = !uses.includes(el.dataset.uses);
     renderHideChips($("#decoHide"), d);
@@ -669,7 +675,7 @@
     commit();
     syncControls();
     requestRender();
-    status(`「${P.DECO_TYPES[removed.type].label}」を削除しました（Ctrl+Z で戻せます）。`);
+    status(t("「{name}」を削除しました（Ctrl+Z で戻せます）。", { name: t(P.DECO_TYPES[removed.type].label) }));
   }
 
   // ---------------------------------------------------------------- corners
@@ -680,15 +686,15 @@
     cornerMode = mode;
     const box = $("#cornerRows");
     box.innerHTML = "";
-    const typeOptions = CORNER_TYPES.map(([value, text]) => `<option value="${value}">${text}</option>`).join("");
+    const typeOptions = CORNER_TYPES.map(([value, text]) => `<option value="${value}">${t(text)}</option>`).join("");
     for (const i of mode === "linked" ? [0] : [0, 1, 2, 3]) {
-      const name = mode === "linked" ? "角" : CORNER_LABELS[i];
+      const name = t(mode === "linked" ? "角" : CORNER_LABELS[i]);
       const row = document.createElement("div");
       row.className = "row";
-      row.innerHTML = `<label>${mode === "linked" ? "形と大きさ" : name}</label>
+      row.innerHTML = `<label>${mode === "linked" ? t("形と大きさ") : name}</label>
         <span class="pair" style="grid-template-columns: 92px minmax(0, 1fr);">
-          <select data-bind="opening.corners.${i}.type" aria-label="${name}の形">${typeOptions}</select>
-          <span class="with-value"><input type="range" data-bind="opening.corners.${i}.size" min="0" max="300" aria-label="${name}の大きさ"><output data-out="opening.corners.${i}.size"></output></span>
+          <select data-bind="opening.corners.${i}.type" aria-label="${t("{name}の形", { name })}">${typeOptions}</select>
+          <span class="with-value"><input type="range" data-bind="opening.corners.${i}.size" min="0" max="300" aria-label="${t("{name}の大きさ", { name })}"><output data-out="opening.corners.${i}.size"></output></span>
         </span>`;
       box.append(row);
     }
@@ -727,17 +733,17 @@
         thumb.alt = "";
       } else {
         thumb = document.createElement("span");
-        thumb.textContent = layer.kind === "text" ? "文" : "?";
+        thumb.textContent = layer.kind === "text" ? t("文") : "?";
       }
       thumb.className = "thumb-mini";
 
       const name = document.createElement("span");
       name.className = "name";
-      name.textContent = layer.name || (layer.kind === "text" ? layer.text : "画像");
+      name.textContent = layer.name || (layer.kind === "text" ? layer.text : t("画像"));
       if (layer.order === "back") {
         const tag = document.createElement("span");
         tag.className = "tag";
-        tag.textContent = "奥";
+        tag.textContent = t("奥");
         name.append(tag);
       }
 
@@ -767,14 +773,14 @@
     commit();
     syncControls();
     requestRender();
-    status("削除しました（Ctrl+Z で戻せます）。");
+    status(t("削除しました（Ctrl+Z で戻せます）。"));
   }
 
   function duplicateSelectedLayer() {
     const layer = selectedLayer();
     if (!layer) return;
     const copy = Object.assign(M.clone(layer), {
-      id: M.newId("L"), name: layer.name + " のコピー", x: layer.x + 0.02, y: layer.y + 0.02,
+      id: M.newId("L"), name: t("{name} のコピー", { name: layer.name }), x: layer.x + 0.02, y: layer.y + 0.02,
     });
     state.layers.splice(state.layers.indexOf(layer) + 1, 0, copy);
     selectedId = copy.id;
@@ -875,7 +881,7 @@
       document.fonts.add(face);
       env.fontFamilies[id] = asset.family;
     } catch (err) {
-      status(`フォント「${asset.name}」を読み込めませんでした。`, true);
+      status(t("フォント「{name}」を読み込めませんでした。", { name: asset.name }), true);
     }
     requestRender();
     scheduleThumbs();
@@ -909,11 +915,11 @@
     for (const file of files) {
       const result = await addImageAsset(file);
       if (!result) {
-        status(`「${file.name}」は読み込めませんでした（サイズ情報のない SVG など）。`, true);
+        status(t("「{file}」は読み込めませんでした（サイズ情報のない SVG など）。", { file: file.name }), true);
         continue;
       }
       const { id, img } = result, iw = img.naturalWidth, ih = img.naturalHeight;
-      const layer = M.imageLayer(id, (file.name || "画像").replace(/\.[^.]+$/, ""));
+      const layer = M.imageLayer(id, (file.name || t("画像")).replace(/\.[^.]+$/, ""));
       if (Math.abs(iw / ih - VW / R.BASE_H) < 0.02 && iw >= state.size.w * 0.5) {
         layer.fit = "stretch";   // same shape as the canvas: most likely a whole frame material
       } else {
@@ -928,7 +934,7 @@
     switchTab("layers");
     syncControls();
     requestRender();
-    status(`${added} 件の画像を追加しました。`);
+    status(t("{n} 件の画像を追加しました。", { n: added }));
   }
 
   async function addFontFiles(fileList) {
@@ -943,7 +949,7 @@
     fillFontSelects();
     renderFontList();
     scheduleSave();
-    status(`${files.length} 件のフォントを読み込みました。フォント欄の「読込:」から選べます。`);
+    status(t("{n} 件のフォントを読み込みました。フォント欄の「読込:」から選べます。", { n: files.length }));
   }
 
   function renderFontList() {
@@ -1103,7 +1109,7 @@
 
   function toBlob(c) {
     return new Promise((resolve, reject) =>
-      c.toBlob(blob => blob ? resolve(blob) : reject(new Error("PNG の作成に失敗しました。")), "image/png"));
+      c.toBlob(blob => blob ? resolve(blob) : reject(new Error(t("PNG の作成に失敗しました。"))), "image/png"));
   }
 
   function download(blob, name) {
@@ -1134,11 +1140,11 @@
 
   async function downloadPng() {
     try {
-      status("書き出し中...");
+      status(t("書き出し中..."));
       const item = state.variants.enabled ? currentItem() : null;
       const blob = await toBlob(renderFull(item ? item.id : null));
       download(blob, exportName(item));
-      status(`${exportName(item)}（${formatBytes(blob.size)}）を保存しました。`);
+      status(t("{name}（{size}）を保存しました。", { name: exportName(item), size: formatBytes(blob.size) }));
     } catch (err) {
       status(err.message, true);
     }
@@ -1156,10 +1162,10 @@
 
   async function downloadZip() {
     try {
-      status("書き出し中...");
+      status(t("書き出し中..."));
       const { zip, count } = await buildZip();
       download(zip, baseName() + ".zip");
-      status(`${count} 枚を ${baseName()}.zip（${formatBytes(zip.size)}）にまとめて保存しました。`);
+      status(t("{n} 枚を {name}.zip（{size}）にまとめて保存しました。", { n: count, name: baseName(), size: formatBytes(zip.size) }));
     } catch (err) {
       status(err.message, true);
     }
@@ -1191,24 +1197,24 @@
   function saveProject() {
     const data = { app: "ccf-frame-maker", version: 2, state, assets: usedAssets() };
     download(new Blob([JSON.stringify(data)], { type: "application/json" }), baseName() + ".frame.json");
-    status("プロジェクトを保存しました。");
+    status(t("プロジェクトを保存しました。"));
   }
 
   async function openProjectFile(file) {
     try {
       const data = JSON.parse(await readFile(file, "text"));
-      if (!data || data.app !== "ccf-frame-maker" || !data.state) throw new Error("このツールのプロジェクトファイルではありません。");
+      if (!data || data.app !== "ccf-frame-maker" || !data.state) throw new Error(t("このツールのプロジェクトファイルではありません。"));
       await loadProject(data.state, data.assets);
-      status(`「${file.name}」を開きました。`);
+      status(t("「{file}」を開きました。", { file: file.name }));
     } catch (err) {
-      status(err instanceof SyntaxError ? "ファイルを読み取れませんでした。" : err.message, true);
+      status(err instanceof SyntaxError ? t("ファイルを読み取れませんでした。") : err.message, true);
     }
   }
 
   async function resetAll() {
-    if (!confirm("いまの作業内容を消して、最初の状態に戻します。よろしいですか？")) return;
+    if (!confirm(t("いまの作業内容を消して、最初の状態に戻します。よろしいですか？"))) return;
     await loadProject(M.defaultState(), {});
-    status("最初の状態に戻しました。");
+    status(t("最初の状態に戻しました。"));
   }
 
   // ---------------------------------------------------------------- setup
@@ -1221,7 +1227,7 @@
 
   function showDesignDesc() {
     const d = P.DESIGNS[$("#design").value];
-    $("#designDesc").textContent = d ? d.desc + "（形・色・飾りが置き換わります。素材と文字、差分の設定はそのまま）" : "";
+    $("#designDesc").textContent = d ? t(d.desc) + t("（形・色・飾りが置き換わります。素材と文字、差分の設定はそのまま）") : "";
   }
 
   function buildStaticUI() {
@@ -1236,7 +1242,7 @@
       commit();
       syncControls();
       requestRender();
-      status(`「${P.DESIGNS[design.value].label}」を適用しました。`);
+      status(t("「{label}」を適用しました。", { label: t(P.DESIGNS[design.value].label) }));
     });
 
     const sizeSelect = $("#sizePreset");
@@ -1276,7 +1282,7 @@
 
     for (const [type, T] of Object.entries(P.DECO_TYPES)) {
       const btn = smallButton(T.label, "", () => addDecoration(type));
-      btn.title = T.desc;
+      btn.title = t(T.desc);
       $("#decoAdd").append(btn);
     }
 
@@ -1328,7 +1334,7 @@
       commit();
       syncControls();
       requestRender();
-      status(`「${cur.name}」の色の設定を、すべての差分にコピーしました。`);
+      status(t("「{name}」の色の設定を、すべての差分にコピーしました。", { name: cur.name }));
     });
     $("#slotIconPick").addEventListener("click", () => pickSingleImage("icon"));
     $("#singleImageFile").addEventListener("change", ev => onSingleImage(ev.target.files[0]));
@@ -1431,12 +1437,12 @@
     }
     if (saved && saved.state) {
       await loadProject(saved.state, saved.assets);
-      status("前回の作業内容を読み込みました。");
+      status(t("前回の作業内容を読み込みました。"));
     } else {
       await loadProject(M.defaultState(), {});
-      status(autosaveEnabled
+      status(t(autosaveEnabled
         ? "準備できました。「枠」タブで形と色を、「飾り」タブで蔦や花などを重ねていきます。"
-        : "準備できました。このブラウザでは自動保存が使えないため、作業内容は「保存など」タブのプロジェクト保存で残してください。");
+        : "準備できました。このブラウザでは自動保存が使えないため、作業内容は「保存など」タブのプロジェクト保存で残してください。"));
     }
   }
 

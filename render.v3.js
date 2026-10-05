@@ -1,5 +1,5 @@
 /*!
- * render.v2.js - draws one foreground frame (optionally for one variant)
+ * render.v3.js - draws one foreground frame (optionally for one variant)
  *
  * Drawing order (back to front):
  *   window tint -> window effect -> window shadow -> frame fill + grain
@@ -763,7 +763,8 @@
   // ---------------------------------------------------------------- layers
 
   function layerText(layer, slot) {
-    return String(layer.text || "").replace(/\{(差分|時間帯)\}/g, slot.name).replace(/\{英語\}/g, slot.sub);
+    // {差分} / {英語} are the Japanese spellings; {name} / {sub} mean the same (pages in other languages show these).
+    return String(layer.text || "").replace(/\{(差分|時間帯|name)\}/g, slot.name).replace(/\{(英語|sub)\}/g, slot.sub);
   }
 
   function recolored(env, img, assetId, color) {

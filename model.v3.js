@@ -1,5 +1,5 @@
 /*!
- * model.v2.js - project state: defaults, design templates, variants, migration
+ * model.v3.js - project state: defaults, design templates, variants, migration
  *
  * Every length is in "virtual pixels": the canvas is always treated as 1080
  * units tall, so a design keeps its proportions when the output size changes.
@@ -11,6 +11,10 @@
  */
 (function () {
   "use strict";
+
+  // Names the tool puts into a new project (variants, layers, sample title) follow the page's
+  // language (i18n.v1.js). They are the user's data from then on.
+  const t = text => (window.I18n ? window.I18n.t(text) : text);
 
   const P = window.FramePresets;
   const clone = value => JSON.parse(JSON.stringify(value));
@@ -74,7 +78,7 @@
 
   function variantItem(fields) {
     return Object.assign({
-      id: newId("v"), on: true, name: "パターン", sub: "", icon: "none", iconAsset: null, useColors: false,
+      id: newId("v"), on: true, name: t("パターン"), sub: "", icon: "none", iconAsset: null, useColors: false,
       frame1: "#f2f8fc", frame2: "#c3dff1", accent: "#3a8fcb", text: "#274760",
       tint: "#000000", tintAlpha: 0, effect: "none", effectAmount: 0.5,
     }, fields);
@@ -84,7 +88,7 @@
     const K = P.VARIANT_KINDS[kind] || P.VARIANT_KINDS.custom;
     return K.items.map(([id, name, sub, icon, on, opt]) => {
       opt = opt || {};
-      const item = variantItem(Object.assign({ id, name, sub, icon, on }, state.palette, {
+      const item = variantItem(Object.assign({ id, name: t(name), sub, icon, on }, state.palette, {
         effect: opt.effect || "none", effectAmount: opt.amount == null ? 0.5 : opt.amount,
       }));
       if (kind === "time") Object.assign(item, timePalette(state, id), { useColors: true });
@@ -112,12 +116,12 @@
   }
 
   function imageLayer(assetId, name) {
-    return Object.assign(baseLayer("image", name || "画像"), { asset: assetId, fit: "free", recolor: "none" });
+    return Object.assign(baseLayer("image", name || t("画像")), { asset: assetId, fit: "free", recolor: "none" });
   }
 
   function textLayer() {
-    return Object.assign(baseLayer("text", "文字"), {
-      y: 0.88, text: "シナリオタイトル", font: "mincho", fontName: "", size: 44, bold: true, vertical: false,
+    return Object.assign(baseLayer("text", t("文字")), {
+      y: 0.88, text: t("シナリオタイトル"), font: "mincho", fontName: "", size: 44, bold: true, vertical: false,
       spacing: 0.1, align: "center", color: "text", strokeWidth: 0, strokeColor: "#000000", shadow: 0,
     });
   }
